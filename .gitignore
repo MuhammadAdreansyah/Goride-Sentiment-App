@@ -1,0 +1,23 @@
+# Folder dan file hasil kompilasi Python
+__pycache__/
+*.pyc
+
+# File model dan log
+*.pkl
+*.log
+
+# Folder konfigurasi dan log aplikasi
+config/
+log/
+
+# Folder model machine learning
+models/
+
+# Data mentah dan hasil preprocessing
+/data/
+
+# File environment
+.env
+
+# Folder konfigurasi Streamlit
+.streamlit/
