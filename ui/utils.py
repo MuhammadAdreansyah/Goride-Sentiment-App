@@ -353,9 +353,21 @@ def load_saved_model(model_dir="models"):
         return svm_model, tfidf_vectorizer
     return None, None
 
-def get_or_train_model(data, preprocessing_options=None, batch_size=1000):
+def load_saved_model_tanpa_smote(model_dir="models"):
+    model_path = os.path.join(model_dir, "svm_model_tanpa_smote.pkl")
+    vectorizer_path = os.path.join(model_dir, "tfidf_vectorizer_tanpa_smote.pkl")
+    if os.path.exists(model_path) and os.path.exists(vectorizer_path):
+        svm_model = joblib.load(model_path)
+        tfidf_vectorizer = joblib.load(vectorizer_path)
+        return svm_model, tfidf_vectorizer
+    return None, None
+
+def get_or_train_model(data, preprocessing_options=None, batch_size=1000, use_tanpa_smote=False):
     from sklearn.pipeline import Pipeline
-    svm_model, tfidf_vectorizer = load_saved_model()
+    if use_tanpa_smote:
+        svm_model, tfidf_vectorizer = load_saved_model_tanpa_smote()
+    else:
+        svm_model, tfidf_vectorizer = load_saved_model()
     if svm_model is not None and tfidf_vectorizer is not None:
         # Model sudah ada, tidak perlu training ulang
         tfidf = tfidf_vectorizer

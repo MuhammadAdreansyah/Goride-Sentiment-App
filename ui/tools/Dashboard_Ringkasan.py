@@ -1,4 +1,5 @@
 import streamlit as st
+from ui.auth import auth
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -9,11 +10,13 @@ import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils import (
-    load_sample_data, get_or_train_model, display_model_metrics, get_table_download_link,
-    preprocess_text, get_word_frequencies, get_ngrams, create_wordcloud, predict_sentiment
+    load_sample_data, get_or_train_model, display_model_metrics, predict_sentiment,
+    preprocess_text, get_word_frequencies, get_ngrams, create_wordcloud, get_table_download_link
 )
 
 def render_dashboard():
+    # Sinkronisasi status login dari cookie ke session_state (penting untuk refresh)
+    auth.sync_login_state()
     # Tampilkan toast jika login baru saja berhasil (untuk fallback jika main.py tidak sempat menampilkan)
     if st.session_state.get('login_success', False):
         st.toast(f"User {st.session_state.get('user_email', '')} login successfully!", icon="✅")
@@ -99,16 +102,16 @@ def render_dashboard():
     topics = ["All"] + list(word_freq.keys())
     selected_topic = st.selectbox("Filter berdasarkan topik:", topics)
     if selected_topic != "All":
-        topic_data = filtered_data[filtered_data['teks_preprocessing'].str.contains(selected_topic, case=False)]
+        topic_data = filtered_data[filtered_data['teks_preprocessing'].str.contains(selected_topic, case=False)].copy()
         st.info(f"Ditemukan {len(topic_data)} data untuk topik '{selected_topic}'.")
     else:
-        topic_data = filtered_data
+        topic_data = filtered_data.copy()
     if 'teks_preprocessing' not in topic_data.columns:
         topic_data = topic_data.copy()
         topic_data.loc[:, 'teks_preprocessing'] = topic_data['review_text'].astype(str).apply(lambda x: preprocess_text(x, preprocessing_options))
     if topic_data.empty:
         st.warning(f"Tidak ada data untuk topik '{selected_topic}'. Coba pilih topik lain atau periksa hasil preprocessing/stemming.")
-        topic_data = filtered_data
+        topic_data = filtered_data.copy()
     tab1, tab2, tab3 = st.tabs(["Distribusi Sentimen", "Tren Waktu", "Analisis Kata"])
     with tab1:
         st.subheader("📊 Distribusi Sentimen")
@@ -254,17 +257,17 @@ def render_dashboard():
                             fig, ax = plt.subplots(figsize=(10, 5))
                             ax.imshow(pos_wordcloud, interpolation='bilinear')
                             ax.axis('off')
-                            st.pyplot(fig)
-                    st.write("#### Top Kata Positif berdasarkan TF-IDF")
-                    feature_names = tfidf_vectorizer.get_feature_names_out()
-                    pos_samples = positive_reviews['teks_preprocessing']
-                    pos_tfidf = tfidf_vectorizer.transform(pos_samples)
-                    if pos_tfidf.shape[0] > 0:
-                        pos_importance = np.asarray(pos_tfidf.mean(axis=0)).flatten()
-                        pos_indices = np.argsort(pos_importance)[-10:]
-                        pos_words_df = pd.DataFrame({'Word': [feature_names[i] for i in pos_indices], 'Importance': [pos_importance[i] for i in pos_indices]})
-                        fig = px.bar(pos_words_df, x='Importance', y='Word', orientation='h', title="Kata Kunci dalam Ulasan Positif", color='Importance', color_continuous_scale='Greens')
-                        st.plotly_chart(fig, use_container_width=True)
+                            st.pyplot(fig, use_container_width=True)
+            st.write("#### Top Kata Positif berdasarkan TF-IDF")
+            feature_names = tfidf_vectorizer.get_feature_names_out()
+            pos_samples = positive_reviews['teks_preprocessing']
+            pos_tfidf = tfidf_vectorizer.transform(pos_samples)
+            if pos_tfidf.shape[0] > 0:
+                pos_importance = np.asarray(pos_tfidf.mean(axis=0)).flatten()
+                pos_indices = np.argsort(pos_importance)[-10:]
+                pos_words_df = pd.DataFrame({'Word': [feature_names[i] for i in pos_indices], 'Importance': [pos_importance[i] for i in pos_indices]})
+                fig = px.bar(pos_words_df, x='Importance', y='Word', orientation='h', title="Kata Kunci dalam Ulasan Positif", color='Importance', color_continuous_scale='Greens')
+                st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data ulasan positif untuk ditampilkan.")
         with col2:
@@ -280,17 +283,17 @@ def render_dashboard():
                             fig, ax = plt.subplots(figsize=(10, 5))
                             ax.imshow(neg_wordcloud, interpolation='bilinear')
                             ax.axis('off')
-                            st.pyplot(fig)
-                    st.write("#### Top Kata Negatif berdasarkan TF-IDF")
-                    feature_names = tfidf_vectorizer.get_feature_names_out()
-                    neg_samples = negative_reviews['teks_preprocessing']
-                    neg_tfidf = tfidf_vectorizer.transform(neg_samples)
-                    if neg_tfidf.shape[0] > 0:
-                        neg_importance = np.asarray(neg_tfidf.mean(axis=0)).flatten()
-                        neg_indices = np.argsort(neg_importance)[-10:]
-                        neg_words_df = pd.DataFrame({'Word': [feature_names[i] for i in neg_indices], 'Importance': [neg_importance[i] for i in neg_indices]})
-                        fig = px.bar(neg_words_df, x='Importance', y='Word', orientation='h', title="Kata Kunci dalam Ulasan Negatif", color='Importance', color_continuous_scale='Reds')
-                        st.plotly_chart(fig, use_container_width=True)
+                            st.pyplot(fig, use_container_width=True)
+            st.write("#### Top Kata Negatif berdasarkan TF-IDF")
+            feature_names = tfidf_vectorizer.get_feature_names_out()
+            neg_samples = negative_reviews['teks_preprocessing']
+            neg_tfidf = tfidf_vectorizer.transform(neg_samples)
+            if neg_tfidf.shape[0] > 0:
+                neg_importance = np.asarray(neg_tfidf.mean(axis=0)).flatten()
+                neg_indices = np.argsort(neg_importance)[-10:]
+                neg_words_df = pd.DataFrame({'Word': [feature_names[i] for i in neg_indices], 'Importance': [neg_importance[i] for i in neg_indices]})
+                fig = px.bar(neg_words_df, x='Importance', y='Word', orientation='h', title="Kata Kunci dalam Ulasan Negatif", color='Importance', color_continuous_scale='Reds')
+                st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Tidak ada data ulasan negatif untuk ditampilkan.")
         st.subheader("🔍 Analisis Topik")
@@ -346,7 +349,14 @@ def render_dashboard():
     start_idx = (current_page - 1) * rows_per_page
     end_idx = min(start_idx + rows_per_page, len(filtered_display))
     paginated_data = filtered_display.iloc[start_idx:end_idx]
-    st.dataframe(paginated_data.style.map(style_sentiment, subset=['sentiment']), height=400)
+    # Konversi semua kolom ke string agar Arrow tidak error
+    paginated_data = paginated_data.copy()
+    for col in paginated_data.columns:
+        if paginated_data[col].dtype == 'object':
+            paginated_data[col] = paginated_data[col].astype(str)
+        elif pd.api.types.is_numeric_dtype(paginated_data[col]):
+            paginated_data[col] = paginated_data[col].astype(str)
+    st.dataframe(paginated_data, height=400)
     st.write(f"Menampilkan {start_idx+1}-{end_idx} dari {len(filtered_display)} ulasan (Halaman {current_page} dari {total_pages})")
     st.markdown(get_table_download_link(filtered_display, "goride_reviews_filtered", "📥 Download Data Terfilter (CSV)"), unsafe_allow_html=True)
     st.subheader("💡 Ringkasan Insights")

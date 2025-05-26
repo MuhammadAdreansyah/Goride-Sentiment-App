@@ -68,6 +68,8 @@ pred_pg = st.Page(prediksi_sentimen_page, title="Prediksi Sentimen", icon=":mate
 # 5. Fungsi main() sebagai workflow utama aplikasi
 def main():
     """Workflow utama aplikasi: autentikasi, navigasi, dan routing modul."""
+    # Sinkronisasi status login dari cookie ke session_state (penting untuk refresh)
+    auth.sync_login_state()
     auth.initialize_session_state()
     # Tampilkan toast jika login sukses
     if st.session_state.get('login_success', False):

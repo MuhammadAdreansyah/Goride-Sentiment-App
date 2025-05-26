@@ -1,0 +1,9 @@
+Metadata-Version: 2.1
+Name: st_cookie
+Version: 1.0.0
+Summary: Streamlit Cookie Writer and Reader
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: streamlit>=1.37
+Requires-Dist: streamlit-cookies-controller>=0.0.4
+
