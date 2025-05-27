@@ -673,11 +673,17 @@ def main() -> None:
         # Sinkronisasi status login dari cookie ke session_state
         sync_login_state()
         # Initialize session state first
-        initialize_session_state()
-        
+        initialize_session_state()        # Tampilkan pesan sukses logout jika ada
+        if st.session_state.get('logout_success', False):
+            st.success("You have been successfully logged out.")
+            st.markdown(
+                "<meta http-equiv='refresh' content='0;url=/' />",
+                unsafe_allow_html=True
+            )
+            st.stop()  # Hentikan eksekusi agar pesan tidak hilang karena rerun berikutnya
+
         # Note: Page configuration is now handled by main.py
         # for better coordination between authentication and main views
-        
         # Custom CSS styling - but page configuration is handled by main app
         st.markdown("""
             <style>
