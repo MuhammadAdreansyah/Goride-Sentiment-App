@@ -384,11 +384,11 @@ def logout() -> None:
         # Reset status login
         st.session_state['logged_in'] = False
         st.session_state['user_email'] = None
-        st.session_state["logout_success"] = True
-        st.query_params.clear()
         # Hapus cookie login
         cookie_controller.remove('is_logged_in')
         cookie_controller.remove('user_email')
+        # Jangan redirect di sini, cukup set flag logout_success
+        st.session_state["logout_success"] = True
     except Exception as e:
         logger.error(f"Logout failed: {str(e)}")
         st.error(f"Logout failed: {str(e)}")

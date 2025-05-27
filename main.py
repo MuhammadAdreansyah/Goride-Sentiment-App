@@ -34,29 +34,31 @@ def login_page():
     )
     auth.main()
 
-def logout_page():
-    """Fungsi logout dan redirect ke halaman login"""
-    auth.logout()
-    st.session_state['logged_in'] = False
-    st.rerun()
-
 def dashboard_page():
-    """Halaman Dashboard Ringkasan"""
     render_dashboard()
 
 def analisis_data_page():
-    """Halaman Analisis Data"""
     render_data_analysis()
 
 def prediksi_sentimen_page():
-    """Halaman Prediksi Sentimen"""
     render_sentiment_prediction()
 
+def logout_page():
+    """Fungsi logout dan redirect ke halaman login"""
+    auth.logout()
+    st.toast("You have been successfully logged out.", icon="✅")
+    st.markdown("""
+        <meta http-equiv='refresh' content='1; url=/' />
+    """, unsafe_allow_html=True)
+    if 'logout_success' in st.session_state:
+        del st.session_state['logout_success']
+    st.stop()
+
 # 4. Definisi Page untuk navigasi multi-workflow
-logout_pg = st.Page(logout_page, title="Logout", icon=":material/logout:")
 dash_pg = st.Page(dashboard_page, title="Dashboard Ringkasan", icon=":material/dashboard:", default=True)
 data_pg = st.Page(analisis_data_page, title="Analisis Data", icon=":material/analytics:")
 pred_pg = st.Page(prediksi_sentimen_page, title="Prediksi Sentimen", icon=":material/psychology:")
+logout_pg = st.Page(logout_page, title="Logout", icon=":material/logout:")
 
 # 5. Fungsi main() sebagai workflow utama aplikasi
 def main():
@@ -71,12 +73,16 @@ def main():
     # Tampilkan toast jika logout sukses
     if st.session_state.get('logout_success', False):
         st.toast("You have been successfully logged out.", icon="✅")
-        st.session_state['logout_success'] = False
-    # Jika sudah login, tampilkan navigasi modul utama & logout
+        st.markdown("""
+            <meta http-equiv='refresh' content='1; url=/' />
+        """, unsafe_allow_html=True)
+        del st.session_state['logout_success']
+        st.stop()
+    # Jika sudah login, tampilkan navigasi modul utama & tombol logout di sidebar
     if st.session_state.get('logged_in', False):
         pg = st.navigation({
             "Tools": [dash_pg, data_pg, pred_pg],
-            "Akun": [logout_pg],
+            "Logout": [logout_pg]
         })
         pg.run()
     else:
