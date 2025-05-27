@@ -1,35 +1,27 @@
-# 1. Import library & modul eksternal/internal
 import streamlit as st
+
+# Sederhanakan: layout ditentukan hanya di awal, berdasarkan status login
+if 'logged_in' in st.session_state and st.session_state['logged_in']:
+    layout = 'wide'
+else:
+    layout = 'centered'
+st.set_page_config(**{
+    'page_title': "GoRide Sentiment Analysis",
+    'page_icon': "🛵",
+    'layout': layout,
+    'initial_sidebar_state': "auto"
+})
+
+
+# 1. Import library & modul eksternal/internal
 from ui.auth import auth
 from ui.tools.Dashboard_Ringkasan import render_dashboard
 from ui.tools.Analisis_Data import render_data_analysis
 from ui.tools.Prediksi_Sentimen import render_sentiment_prediction
 
-# 2. Konfigurasi halaman Streamlit (dinamis sesuai status login)
-def get_page_config():
-    """Mengembalikan konfigurasi page (icon, layout, sidebar) sesuai status login user."""
-    if st.session_state.get('logged_in') and st.session_state.get('user_email'):
-        return {
-            'page_title': "GoRide Sentiment Analysis",
-            'page_icon': "📊",
-            'layout': "wide",
-            'initial_sidebar_state': "auto"
-        }
-    else:
-        return {
-            'page_title': "GoRide Sentiment Analysis",
-            'page_icon': "🔐",
-            'layout': "centered",
-            'initial_sidebar_state': "collapsed"
-        }
-
-# Konfigurasi page WAJIB dipanggil sebelum komponen Streamlit lain
-st.set_page_config(**get_page_config())
-
 # 3. Definisi fungsi untuk setiap halaman utama
 def login_page():
     """Halaman autentikasi (login/register/lupa password)"""
-    # Hide sidebar and disable expand/collapse when not logged in
     st.markdown(
         """
         <style>
@@ -45,6 +37,7 @@ def login_page():
 def logout_page():
     """Fungsi logout dan redirect ke halaman login"""
     auth.logout()
+    st.session_state['logged_in'] = False
     st.rerun()
 
 def dashboard_page():
@@ -75,6 +68,10 @@ def main():
     if st.session_state.get('login_success', False):
         st.toast(f"User {st.session_state.get('user_email', '')} login successfully!", icon="✅")
         st.session_state['login_success'] = False
+    # Tampilkan toast jika logout sukses
+    if st.session_state.get('logout_success', False):
+        st.toast("You have been successfully logged out.", icon="✅")
+        st.session_state['logout_success'] = False
     # Jika sudah login, tampilkan navigasi modul utama & logout
     if st.session_state.get('logged_in', False):
         pg = st.navigation({

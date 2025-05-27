@@ -738,7 +738,7 @@ def main() -> None:
         # Handle Google OAuth callback if present
         if not handle_google_login_callback():
             if 'logout_success' in st.session_state:
-                st.success("You have been successfully logged out.")
+                # st.success("You have been successfully logged out.")
                 del st.session_state['logout_success']
 
             previous_auth_type = st.session_state.get('auth_type', '')
