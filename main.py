@@ -11,8 +11,6 @@ st.set_page_config(**{
     'layout': layout,
     'initial_sidebar_state': "auto"
 })
-
-
 # 1. Import library & modul eksternal/internal
 from ui.auth import auth
 from ui.tools.Dashboard_Ringkasan import render_dashboard
@@ -21,17 +19,6 @@ from ui.tools.Prediksi_Sentimen import render_sentiment_prediction
 
 # 3. Definisi fungsi untuk setiap halaman utama
 def login_page():
-    """Halaman autentikasi (login/register/lupa password)"""
-    st.markdown(
-        """
-        <style>
-        [data-testid="stSidebar"], [data-testid="collapsedControl"] {
-            display: none !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
     auth.main()
 
 def logout_page():
