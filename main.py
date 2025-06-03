@@ -1,9 +1,5 @@
 # 1. Import library & modul eksternal/internal
 import streamlit as st
-from ui.auth import auth
-from ui.tools.Dashboard_Ringkasan import render_dashboard
-from ui.tools.Analisis_Data import render_data_analysis
-from ui.tools.Prediksi_Sentimen import render_sentiment_prediction
 
 # 2. Konfigurasi halaman Streamlit (dinamis sesuai status login)
 def get_page_config():
@@ -26,10 +22,15 @@ def get_page_config():
 # Konfigurasi page WAJIB dipanggil sebelum komponen Streamlit lain
 st.set_page_config(**get_page_config())
 
+from ui.auth import auth
+from ui.tools.Dashboard_Ringkasan import render_dashboard
+from ui.tools.Analisis_Data import render_data_analysis
+from ui.tools.Prediksi_Sentimen import render_sentiment_prediction
+import time
+
 # 3. Definisi fungsi untuk setiap halaman utama
 def login_page():
     """Halaman autentikasi (login/register/lupa password)"""
-    # Hide sidebar and disable expand/collapse when not logged in
     st.markdown(
         """
         <style>
@@ -43,9 +44,13 @@ def login_page():
     auth.main()
 
 def logout_page():
-    """Fungsi logout dan redirect ke halaman login"""
+    """Fungsi logout dan redirect ke halaman utama autentikasi"""
     auth.logout()
-    st.rerun()
+    # Redirect ke root dengan query param logout=1
+    st.markdown(
+        '<meta http-equiv="refresh" content="0;url=/?logout=1" />',
+        unsafe_allow_html=True
+    )
 
 def dashboard_page():
     """Halaman Dashboard Ringkasan"""
@@ -68,6 +73,8 @@ pred_pg = st.Page(prediksi_sentimen_page, title="Prediksi Sentimen", icon=":mate
 # 5. Fungsi main() sebagai workflow utama aplikasi
 def main():
     """Workflow utama aplikasi: autentikasi, navigasi, dan routing modul."""
+    # Sinkronisasi status login dari cookie ke session_state (penting untuk refresh)
+    auth.sync_login_state()
     auth.initialize_session_state()
     # Tampilkan toast jika login sukses
     if st.session_state.get('login_success', False):

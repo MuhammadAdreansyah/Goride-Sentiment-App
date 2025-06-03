@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict
 from urllib.parse import urlencode
 import uuid
+from streamlit_cookies_controller import CookieController
 
 # =============================================
 # INITIAL SETUP AND CONFIGURATION
@@ -48,6 +49,9 @@ class Config:
     SESSION_TIMEOUT = 3600
     MAX_LOGIN_ATTEMPTS = 5
     RATE_LIMIT_WINDOW = 300
+
+# Inisialisasi controller cookies
+cookie_controller = CookieController()
 
 # =============================================
 # SESSION MANAGEMENT
@@ -85,6 +89,17 @@ def verify_environment():
         st.error(f"Configuration error: Missing required secrets - {', '.join(missing_vars)}")
         return False
     return True
+
+def sync_login_state():
+    """Sinkronisasi status login dari cookie ke session_state di awal aplikasi"""
+    is_logged_in_cookie = cookie_controller.get('is_logged_in')
+    user_email_cookie = cookie_controller.get('user_email')
+    if is_logged_in_cookie == 'True':
+        st.session_state['logged_in'] = True
+        if user_email_cookie:
+            st.session_state['user_email'] = user_email_cookie
+    else:
+        st.session_state['logged_in'] = False
 
 # =============================================
 # SECURITY UTILITIES
@@ -280,6 +295,9 @@ def handle_google_login_callback() -> bool:
                         del st.session_state[key]
                     
                 logger.info(f"Successfully logged in user: {user_email}")
+                # Set cookie login
+                cookie_controller.set('is_logged_in', 'True')
+                cookie_controller.set('user_email', user_email)
                 st.rerun()
                 return True
 
@@ -368,6 +386,9 @@ def logout() -> None:
         st.session_state['user_email'] = None
         st.session_state["logout_success"] = True
         st.query_params.clear()
+        # Hapus cookie login
+        cookie_controller.remove('is_logged_in')
+        cookie_controller.remove('user_email')
     except Exception as e:
         logger.error(f"Logout failed: {str(e)}")
         st.error(f"Logout failed: {str(e)}")
@@ -433,7 +454,9 @@ def display_login_form(firebase_auth: object) -> None:
                             'login_success': True,  # New flag to trigger clean state transitions
                             'pending_config_change': True  # Flag to indicate we need to update layout
                         })
-
+                        # Set cookie login
+                        cookie_controller.set('is_logged_in', 'True')
+                        cookie_controller.set('user_email', email)
                         # Clear any logout or force_auth flags that might interfere
                         for key in ['force_auth_page', 'logout_success']:
                             if key in st.session_state:
@@ -647,6 +670,8 @@ def display_riset_password_form(firebase_auth: object) -> None:
 def main() -> None:
     """Main application entry point with better error handling"""
     try:
+        # Sinkronisasi status login dari cookie ke session_state
+        sync_login_state()
         # Initialize session state first
         initialize_session_state()
         
@@ -710,12 +735,15 @@ def main() -> None:
                 Ini aplikasi tugas akhir saya, setelah login anda akan melihat karya yang saya ciptakan dari pagi sampai ke pagi lagi 😂 </p>
             """, unsafe_allow_html=True)
 
+        # Tampilkan pesan logout jika ada query param
+        if st.query_params.get("logout") == "1":
+            st.success("You have been successfully logged out.")
+            # st.toast("You have been successfully logged out.", icon="✅")
+        if st.query_params.get("force_auth") == "1":
+            st.query_params.clear()
+
         # Handle Google OAuth callback if present
         if not handle_google_login_callback():
-            if 'logout_success' in st.session_state:
-                st.success("You have been successfully logged out.")
-                del st.session_state['logout_success']
-
             previous_auth_type = st.session_state.get('auth_type', '')
             auth_type = st.selectbox(
                 "Pilih metode autentikasi",  # label yang jelas

@@ -7,16 +7,19 @@ import plotly.graph_objects as go
 import nltk
 import sys
 import os
-import io
 import base64
 import plotly.express as px
+from ui.auth import auth
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils import (
-    load_sample_data, get_or_train_model, display_model_metrics, predict_sentiment
+    load_sample_data, display_model_metrics, predict_sentiment, preprocess_text, get_or_train_model
 )
 
 def render_sentiment_prediction():
-    # Load data dan model (cache)
+    # Sinkronisasi status login dari cookie ke session_state (penting untuk refresh)
+    auth.sync_login_state()
+
+    # Load data (untuk referensi, tidak untuk training ulang model)
     data = load_sample_data()
     preprocessing_options = {
         'lowercase': True,
@@ -30,7 +33,7 @@ def render_sentiment_prediction():
         'stemming': True,
         'rejoin': True
     }
-    pipeline, accuracy, precision, recall, f1, confusion_mat, X_test, y_test, tfidf_vectorizer, svm_model = get_or_train_model(data, preprocessing_options)
+    pipeline, accuracy, precision, recall, f1, confusion_mat, X_test, y_test, tfidf_vectorizer, svm_model = get_or_train_model(data, preprocessing_options, use_tanpa_smote=True)
 
     st.title("🔍 Prediksi Sentimen Teks")
     st.subheader("Analisis Sentimen Ulasan GoRide secara Real-time")
@@ -53,7 +56,7 @@ def render_sentiment_prediction():
 
     if text_input and predict_button:
         with st.spinner('Menganalisis teks...'):
-            result = predict_sentiment(text_input, pipeline)
+            result = predict_sentiment(text_input, pipeline, preprocessing_options)
             prediction = result['sentiment']
             if prediction == "POSITIF":
                 confidence = result['probabilities']['POSITIF'] * 100
