@@ -1,23 +1,5 @@
 import streamlit as st
 
-# Sederhanakan: layout ditentukan hanya di awal, berdasarkan status login
-if 'logged_in' in st.session_state and st.session_state['logged_in']:
-    layout = 'wide'
-else:
-    layout = 'centered'
-st.set_page_config(**{
-    'page_title': "GoRide Sentiment Analysis",
-    'page_icon': "🛵",
-    'layout': layout,
-    'initial_sidebar_state': "auto"
-})
-# 1. Import library & modul eksternal/internal
-import streamlit as st
-from ui.auth import auth
-from ui.tools.Dashboard_Ringkasan import render_dashboard
-from ui.tools.Analisis_Data import render_data_analysis
-from ui.tools.Prediksi_Sentimen import render_sentiment_prediction
-
 # 2. Konfigurasi halaman Streamlit (dinamis sesuai status login)
 def get_page_config():
     """Mengembalikan konfigurasi page (icon, layout, sidebar) sesuai status login user."""
@@ -39,26 +21,35 @@ def get_page_config():
 # Konfigurasi page WAJIB dipanggil sebelum komponen Streamlit lain
 st.set_page_config(**get_page_config())
 
+from ui.auth import auth
+from ui.tools.Dashboard_Ringkasan import render_dashboard
+from ui.tools.Analisis_Data import render_data_analysis
+from ui.tools.Prediksi_Sentimen import render_sentiment_prediction
+
 # 3. Definisi fungsi untuk setiap halaman utama
 def login_page():
     """Halaman autentikasi (login/register/lupa password)"""
-    # Hide sidebar and disable expand/collapse when not logged in
     st.markdown(
         """
         <style>
-        [data-testid="stSidebar"], [data-testid="collapsedControl"] {
+        [data-testid='stSidebar'], [data-testid='collapsedControl'] {
             display: none !important;
         }
         </style>
         """,
         unsafe_allow_html=True
     )
+
     auth.main()
 
 def logout_page():
     """Fungsi logout dan redirect ke halaman utama autentikasi"""
     auth.logout()
-    st.rerun()
+    # Redirect ke root dengan query param logout=1
+    st.markdown(
+        '<meta http-equiv="refresh" content="0;url=/?logout=1" />',
+        unsafe_allow_html=True
+    )
 
 def dashboard_page():
     """Halaman Dashboard Ringkasan"""
@@ -102,7 +93,7 @@ def main():
 # 6. Entry point aplikasi
 if __name__ == "__main__":
     main()
-    
+
 # =============================================
 # GoRide Sentiment Analysis - Main Entry Point
 # =============================================
