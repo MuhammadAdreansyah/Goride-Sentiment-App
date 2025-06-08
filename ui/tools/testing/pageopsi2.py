@@ -764,8 +764,7 @@ def render_dashboard():
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("📝 Tidak ditemukan frasa yang signifikan")
-            else:
-                st.warning("⚠️ Tidak ada teks yang dapat dianalisis untuk bigram")
+            else:                st.warning("⚠️ Tidak ada teks yang dapat dianalisis untuk bigram")
         except Exception as e:
             st.error(f"❌ Error dalam analisis bigram: {str(e)}")
     
@@ -778,10 +777,37 @@ def render_dashboard():
         neg_pct = current_topic_metrics['neg_percentage']
         total_reviews = current_topic_metrics['total']
         
-        # Enhanced insights section
+        # Calculate trend data for insights (synchronize with tab2)
+        trend_data = None
+        trend_change = 0
+        try:
+            if len(topic_data) > 1:
+                topic_data_with_date = topic_data.copy()
+                topic_data_with_date['date'] = pd.to_datetime(topic_data_with_date['date'])
+                topic_data_with_date = topic_data_with_date.sort_values('date')
+                
+                # Create time-based grouping for trend analysis
+                date_groups = topic_data_with_date.groupby(topic_data_with_date['date'].dt.date).agg({
+                    'sentiment': ['count'],
+                    'review_text': 'count'
+                }).reset_index()
+                
+                if len(date_groups) > 1:
+                    # Calculate sentiment ratio for first and last periods
+                    first_period = topic_data_with_date[topic_data_with_date['date'].dt.date <= date_groups['date'].iloc[len(date_groups)//3]]
+                    last_period = topic_data_with_date[topic_data_with_date['date'].dt.date >= date_groups['date'].iloc[-len(date_groups)//3:].iloc[0]]
+                    
+                    if len(first_period) > 0 and len(last_period) > 0:
+                        first_pos_ratio = len(first_period[first_period['sentiment'] == 'POSITIF']) / len(first_period) * 100
+                        last_pos_ratio = len(last_period[last_period['sentiment'] == 'POSITIF']) / len(last_period) * 100
+                        trend_change = last_pos_ratio - first_pos_ratio
+        except Exception:
+            pass
+        
+        # Enhanced insights section with better visual hierarchy
         st.markdown("#### 📊 Analisis Sentimen Saat Ini")
         
-        # Visual insight cards
+        # Visual insight cards with improved design
         col1, col2, col3 = st.columns(3)
         
         with col1:
@@ -826,20 +852,12 @@ def render_dashboard():
             <div style="padding: 1rem; border-left: 4px solid #2E8B57; background-color: rgba(0,0,0,0.05); border-radius: 0.5rem;">
                 <h4 style="margin: 0; color: #2E8B57;">{volume_status}</h4>
                 <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem;">{volume_msg}</p>
-                <p style="margin: 0.5rem 0 0 0; font-weight: bold;">{total_reviews:,} Total Ulasan</p>
-            </div>
+                <p style="margin: 0.5rem 0 0 0; font-weight: bold;">{total_reviews:,} Total Ulasan</p>            </div>
             """, unsafe_allow_html=True)
         
         with col3:
-            # Trend insight (if available)
-            trend_status = "📊 Belum Ada Tren"
-            trend_msg = "Analisis tren tersedia di tab Tren Waktu"
-            
-            if 'sentiment_pivot' in locals() and not sentiment_pivot.empty and len(sentiment_pivot) > 1:
-                first_ratio = sentiment_pivot['positive_percentage'].iloc[0]
-                last_ratio = sentiment_pivot['positive_percentage'].iloc[-1]
-                trend_change = last_ratio - first_ratio
-                
+            # Trend insight with synchronized data
+            if trend_change != 0:
                 if trend_change > 5:
                     trend_status = "📈 Tren Membaik"
                     trend_msg = f"Naik {trend_change:.1f}% dalam periode ini"
@@ -853,6 +871,8 @@ def render_dashboard():
                     trend_msg = f"Perubahan {trend_change:+.1f}% (stabil)"
                     trend_color = "blue"
             else:
+                trend_status = "📊 Analisis Tren"
+                trend_msg = "Lihat tab 'Tren Waktu' untuk detail"
                 trend_color = "gray"
             
             st.markdown(f"""
@@ -862,9 +882,12 @@ def render_dashboard():
             </div>
             """, unsafe_allow_html=True)
         
-        # Key insights with better text analysis
+        # Enhanced Key Insights section with better structure
         st.markdown("---")
         st.markdown("#### 🔍 Temuan Utama")
+        
+        # Create insights container with better organization
+        insight_container = st.container()
         
         # Get key terms for insights
         try:
@@ -882,77 +905,191 @@ def render_dashboard():
                 neg_text = " ".join(neg_reviews['teks_preprocessing'].dropna())
                 neg_terms = get_word_frequencies(neg_text, top_n=5)
             
-            insights = []
-            
-            # Sentiment-based insights
-            if pos_pct > 80:
-                insights.append(f"✅ **Kepuasan Pelanggan Excellent:** {pos_pct:.1f}% ulasan positif menunjukkan layanan yang sangat memuaskan")
-                if pos_terms:
-                    top_pos_words = list(pos_terms.keys())[:3]
-                    insights.append(f"🌟 **Kekuatan Utama:** Pelanggan menyukai aspek: {', '.join(top_pos_words)}")
-            elif pos_pct > 60:
-                insights.append(f"✅ **Kepuasan Pelanggan Baik:** {pos_pct:.1f}% ulasan positif menunjukkan layanan yang memuaskan")
-                if pos_terms:
-                    top_pos_words = list(pos_terms.keys())[:3]
-                    insights.append(f"💪 **Aspek Positif:** {', '.join(top_pos_words)}")
-            elif pos_pct > 40:
-                insights.append(f"⚠️ **Kepuasan Pelanggan Sedang:** {pos_pct:.1f}% positif, {neg_pct:.1f}% negatif - perlu peningkatan")
-            else:
-                insights.append(f"🚨 **Perhatian Khusus Diperlukan:** {neg_pct:.1f}% ulasan negatif dominan")
-            
-            # Negative insights and recommendations
-            if neg_pct > 20 and neg_terms:
-                top_neg_words = list(neg_terms.keys())[:3]
-                insights.append(f"⚠️ **Area Perhatian:** Masalah utama terkait: {', '.join(top_neg_words)}")
-            
-            # Volume insights
-            if total_reviews < 50:
-                insights.append("📊 **Data Terbatas:** Pertimbangkan untuk mengumpulkan lebih banyak ulasan untuk analisis yang lebih akurat")
-            elif total_reviews > 5000:
-                insights.append("📈 **Volume Data Excellent:** Analisis berdasarkan dataset yang sangat representatif")
-            
-            # Display insights
-            for insight in insights:
-                st.info(insight)
+            # Enhanced insights display with visual indicators
+            with insight_container:
+                insights_col1, insights_col2 = st.columns([2, 1])
                 
+                with insights_col1:
+                    # Primary insights with better categorization
+                    if pos_pct > 80:
+                        st.success(f"✅ **Kepuasan Pelanggan Excellent** ({pos_pct:.1f}%)")
+                        st.markdown("Tingkat kepuasan sangat tinggi menunjukkan layanan yang sangat memuaskan")
+                        if pos_terms:
+                            top_pos_words = list(pos_terms.keys())[:3]
+                            st.info(f"🌟 **Kekuatan Utama:** {', '.join(top_pos_words)}")
+                    elif pos_pct > 60:
+                        st.success(f"✅ **Kepuasan Pelanggan Baik** ({pos_pct:.1f}%)")
+                        st.markdown("Kepuasan di atas rata-rata menunjukkan layanan yang memuaskan")
+                        if pos_terms:
+                            top_pos_words = list(pos_terms.keys())[:3]
+                            st.info(f"💪 **Aspek Positif:** {', '.join(top_pos_words)}")
+                    elif pos_pct > 40:
+                        st.warning(f"⚠️ **Kepuasan Pelanggan Sedang** ({pos_pct:.1f}% vs {neg_pct:.1f}%)")
+                        st.markdown("Ada keseimbangan antara positif dan negatif - perlu peningkatan")
+                    else:
+                        st.error(f"🚨 **Perhatian Khusus Diperlukan** ({neg_pct:.1f}% negatif)")
+                        st.markdown("Ulasan negatif dominan memerlukan tindakan segera")
+                    
+                    # Volume and reliability insights
+                    if total_reviews < 50:
+                        st.warning("📊 **Data Terbatas** - Perlu lebih banyak ulasan untuk analisis akurat")
+                    elif total_reviews > 5000:
+                        st.success("📈 **Volume Data Excellent** - Analisis sangat representatif")
+                    
+                with insights_col2:
+                    # Visual sentiment distribution
+                    sentiment_fig = go.Figure(data=[go.Pie(
+                        labels=['Positif', 'Negatif'],
+                        values=[pos_pct, neg_pct],
+                        hole=0.6,
+                        marker_colors=['#00cc44', '#ff4444']
+                    )])
+                    sentiment_fig.update_layout(
+                        title="Distribusi Sentimen",
+                        height=250,
+                        showlegend=True,
+                        margin=dict(t=40, b=0, l=0, r=0)
+                    )
+                    sentiment_fig.update_traces(
+                        textinfo='percent+label',
+                        textfont_size=12
+                    )
+                    st.plotly_chart(sentiment_fig, use_container_width=True)
+                    
+                    # Key metrics summary
+                    st.metric("Total Ulasan", f"{total_reviews:,}")
+                    st.metric("Rasio Positif", f"{pos_pct:.1f}%", 
+                             delta=f"{pos_pct-70:.1f}%" if pos_pct != 70 else None)
+                
+                # Specific issue identification
+                if neg_pct > 20 and neg_terms:
+                    st.markdown("---")
+                    top_neg_words = list(neg_terms.keys())[:3]
+                    st.error(f"⚠️ **Area Perhatian Utama:** {', '.join(top_neg_words)}")
+                    
+                    # Show frequency of negative terms
+                    neg_terms_df = pd.DataFrame(list(neg_terms.items())[:5], columns=['Kata', 'Frekuensi'])
+                    st.markdown("**📊 Masalah Paling Sering Disebutkan:**")
+                    for idx, row in neg_terms_df.iterrows():
+                        percentage = (row['Frekuensi'] / total_reviews * 100)
+                        st.markdown(f"• **{row['Kata']}**: {row['Frekuensi']} kali ({percentage:.1f}% dari total)")
+                        
         except Exception as e:
             st.error(f"❌ Error dalam analisis insights: {str(e)}")
         
-        # Actionable recommendations
+        # Enhanced Actionable Recommendations section
+        st.markdown("---")
         if neg_pct > 15:  # If there are significant negative reviews
-            st.markdown("---")
-            st.markdown("#### 🔄 Rekomendasi Tindakan")
+            st.markdown("#### 🎯 Rekomendasi Tindakan Prioritas")
             
             try:
-                neg_text = " ".join(topic_data[topic_data['sentiment'] == 'NEGATIF']['teks_preprocessing'].dropna())
-                if neg_text.strip():
-                    neg_bigrams = get_ngrams(neg_text, 2, top_n=5)
+                # Create recommendation tabs for better organization
+                rec_tab1, rec_tab2, rec_tab3 = st.tabs(["🔍 Analisis Masalah", "📋 Action Plan", "📈 Monitoring"])
+                
+                with rec_tab1:
+                    st.markdown("##### 🎯 Prioritas Perbaikan Berdasarkan Data")
+                    neg_text = " ".join(topic_data[topic_data['sentiment'] == 'NEGATIF']['teks_preprocessing'].dropna())
+                    if neg_text.strip():
+                        neg_bigrams = get_ngrams(neg_text, 2, top_n=5)
+                        
+                        if neg_bigrams:
+                            priority_issues = []
+                            for i, (bigram, freq) in enumerate(neg_bigrams.items(), 1):
+                                percentage = (freq / total_reviews * 100)
+                                if percentage > 1:  # Only show significant issues
+                                    priority_level = "🔴 Tinggi" if percentage > 5 else "🟡 Sedang" if percentage > 3 else "🟢 Rendah"
+                                    priority_issues.append({
+                                        'Prioritas': priority_level,
+                                        'Masalah': bigram.title(),
+                                        'Frekuensi': freq,
+                                        'Persentase': f"{percentage:.1f}%"
+                                    })
+                            
+                            if priority_issues:
+                                issues_df = pd.DataFrame(priority_issues)
+                                st.dataframe(issues_df, use_container_width=True, hide_index=True)
+                            else:
+                                st.info("💡 Tidak ada masalah dengan frekuensi tinggi yang teridentifikasi")
+                
+                with rec_tab2:
+                    st.markdown("##### 📋 Rencana Aksi Strategis")
                     
-                    if neg_bigrams:
-                        st.markdown("**🎯 Prioritas Perbaikan Berdasarkan Analisis:**")
-                        for i, (bigram, freq) in enumerate(neg_bigrams.items(), 1):
-                            percentage = (freq / total_reviews * 100)
-                            if percentage > 1:  # Only show significant issues
-                                st.markdown(f"{i}. **{bigram.title()}** - Disebutkan {freq} kali ({percentage:.1f}% dari total ulasan)")
-                    
-                    # Strategic recommendations
-                    st.markdown("**📋 Rekomendasi Strategis:**")
                     recommendations = [
-                        "🔍 **Analisis Mendalam:** Lakukan deep dive untuk setiap kategori masalah utama",
-                        "📊 **Monitor Berkelanjutan:** Setup alert untuk tren sentimen negatif",
-                        "🎯 **Action Plan:** Buat roadmap perbaikan berdasarkan prioritas masalah",
-                        "📈 **Tracking Progress:** Ukur dampak perbaikan dengan monitoring reguler",
-                        "💬 **Customer Feedback Loop:** Implementasi sistem follow-up untuk feedback"
+                        {
+                            "icon": "🔍",
+                            "title": "Analisis Mendalam",
+                            "description": "Lakukan deep dive untuk setiap kategori masalah utama",
+                            "urgency": "Segera"
+                        },
+                        {
+                            "icon": "🎯", 
+                            "title": "Action Plan Terstruktur",
+                            "description": "Buat roadmap perbaikan berdasarkan prioritas masalah",
+                            "urgency": "1-2 Minggu"
+                        },
+                        {
+                            "icon": "💬",
+                            "title": "Customer Feedback Loop", 
+                            "description": "Implementasi sistem follow-up untuk feedback negatif",
+                            "urgency": "1 Bulan"
+                        },
+                        {
+                            "icon": "📈",
+                            "title": "Tracking Progress",
+                            "description": "Monitor dampak perbaikan dengan dashboard real-time",
+                            "urgency": "Berkelanjutan"
+                        }
                     ]
                     
                     for rec in recommendations:
-                        st.markdown(f"• {rec}")
+                        col_icon, col_content = st.columns([1, 4])
+                        with col_icon:
+                            st.markdown(f"## {rec['icon']}")
+                        with col_content:
+                            st.markdown(f"**{rec['title']}**")
+                            st.markdown(rec['description'])
+                            st.caption(f"⏱️ Timeline: {rec['urgency']}")
+                        st.markdown("---")
+                
+                with rec_tab3:
+                    st.markdown("##### 📊 Rencana Monitoring & Evaluasi")
+                    
+                    monitoring_metrics = [
+                        "📈 **KPI Utama**: Peningkatan rasio sentimen positif >5% per bulan",
+                        "📉 **Alert System**: Notifikasi jika sentimen negatif >25%", 
+                        "🔄 **Review Cycle**: Evaluasi mingguan untuk masalah prioritas tinggi",
+                        "📊 **Success Metrics**: Target 70% sentimen positif dalam 3 bulan",
+                        "💡 **Feedback Integration**: Sistem rating untuk setiap perbaikan"
+                    ]
+                    
+                    for metric in monitoring_metrics:
+                        st.markdown(f"• {metric}")
                         
             except Exception as e:
                 st.error(f"❌ Error dalam analisis rekomendasi: {str(e)}")
         else:
-            st.markdown("---")
-            st.success("🎉 **Excellent Performance!** Sentimen negatif rendah, pertahankan kualitas layanan saat ini.")    
+            st.markdown("#### 🎉 Status Excellent - Rekomendasi Maintenance")
+            
+            # Positive recommendations for good performance
+            maintenance_rec = st.container()
+            with maintenance_rec:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.success("**🎯 Pertahankan Kualitas**")
+                    st.markdown("""
+                    • Monitor konsistensi layanan
+                    • Identifikasi best practices
+                    • Dokumentasi standar operasi
+                    """)
+                
+                with col2:
+                    st.info("**📈 Peluang Optimisasi**")
+                    st.markdown("""
+                    • Eksplorasi fitur baru
+                    • Peningkatan pengalaman pengguna
+                    • Program loyalitas pelanggan
+                    """)
     # Footer
     st.markdown("---")
     st.markdown("""
