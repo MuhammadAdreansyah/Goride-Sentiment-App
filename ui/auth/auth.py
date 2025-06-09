@@ -9,6 +9,10 @@ This application provides:
 - Session management
 """
 
+import warnings
+# Suppress the pkg_resources deprecation warning from gcloud/pyrebase
+warnings.filterwarnings('ignore', message='pkg_resources is deprecated as an API')
+
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
@@ -20,7 +24,7 @@ import httpx
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Union, Any
 from urllib.parse import urlencode
 import uuid
 from streamlit_cookies_controller import CookieController
@@ -150,7 +154,7 @@ def check_session_timeout() -> bool:
 # FIREBASE INITIALIZATION
 # =============================================
 
-def initialize_firebase():
+def initialize_firebase() -> Tuple[Optional[Any], Optional[Any]]:
     """
     Initialize Firebase Admin SDK and Pyrebase with better error handling
     and retry logic. Ambil semua konfigurasi dari st.secrets.
@@ -190,6 +194,8 @@ def initialize_firebase():
                 continue
             st.error(f"Failed to initialize Firebase after {max_retries} attempts. Please check your configuration.")
             return None, None
+    
+    return None, None
 
 # =============================================
 # GOOGLE OAUTH INTEGRATION
@@ -324,7 +330,7 @@ def handle_google_login_callback() -> bool:
             del st.session_state['logged_in']
         return False
 
-def verify_user_exists(user_email: str, firestore_client: object) -> bool:
+def verify_user_exists(user_email: str, firestore_client: Any) -> bool:
     """
     Verify that the user exists and has valid data in Firestore
     """
@@ -397,7 +403,7 @@ def logout() -> None:
 # UI COMPONENTS
 # =============================================
 
-def display_login_form(firebase_auth: object) -> None:
+def display_login_form(firebase_auth: Any) -> None:
     """Display and handle login form with email verification check"""
     if st.session_state.get('google_auth_error', False):
         email = st.session_state.get('google_auth_email', '')
@@ -504,7 +510,7 @@ def display_login_form(firebase_auth: object) -> None:
                     logger.error(f"Google login failed: {str(e)}")
                     st.error("Failed to connect to Google. Please try again later.")
 
-def display_register_form(firebase_auth: object, firestore_client: object) -> None:
+def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
     """Display and handle user registration form"""
     google_email = st.session_state.get('google_auth_email', '')
 
@@ -620,7 +626,7 @@ def display_register_form(firebase_auth: object, firestore_client: object) -> No
                 else:
                     st.error(f"Registration failed: {str(e)}")
 
-def display_riset_password_form(firebase_auth: object) -> None:
+def display_riset_password_form(firebase_auth: Any) -> None:
     """Display and handle password reset form"""
     with st.form("reset_form", clear_on_submit=True):
         st.markdown("### Reset Password")

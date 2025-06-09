@@ -3,6 +3,10 @@ Fungsi utilitas dan resource untuk aplikasi GoRide Sentiment Analysis.
 Berisi: preprocessing, analisis kata, load data, model, dsb.
 """
 
+import warnings
+# Suppress the pkg_resources deprecation warning from gcloud/pyrebase
+warnings.filterwarnings('ignore', message='pkg_resources is deprecated as an API')
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,6 +16,7 @@ import plotly.graph_objects as go
 import re
 import time
 import os
+import joblib
 from datetime import datetime
 import random
 from collections import Counter
@@ -75,6 +80,42 @@ try:
     stopword_list.update(custom_stopwords)
 except FileNotFoundError:
     pass
+
+def clean_text(text):
+    """
+    Basic text cleaning function.
+    Removes URLs, mentions, hashtags, emojis, and non-alphabetic characters.
+    """
+    import re
+    if not isinstance(text, str):
+        return str(text) if text is not None else ""
+    
+    # Convert to lowercase
+    text = text.lower()
+    # Remove URLs
+    text = re.sub(r'http\S+|www\S+', '', text)
+    # Remove mentions and hashtags
+    text = re.sub(r'@[\w_]+|#[\w_]+', '', text)
+    # Remove emoji and non-alphabetic characters
+    text = re.sub(r'[^\w\s.,!?-]', '', text)
+    # Remove repeated characters (e.g., "baguuuusss" -> "bagus")
+    text = re.sub(r'(\w)\1{2,}', r'\1', text)
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
+
+def normalize_word(word):
+    """
+    Normalize a single word using the slang dictionary.
+    """
+    if not isinstance(word, str) or not word.strip():
+        return word
+    
+    if slang_dict:
+        normalized = slang_dict.get(word.lower(), word)
+        return normalized if normalized is not None else word
+    return word
 
 def preprocess_text(text, options=None):
     import re
@@ -364,37 +405,143 @@ def train_model(data, preprocessing_options=None, batch_size=1000):
         return None, 0, 0, 0, 0, None, None, None, None, None
 
 def save_model_and_vectorizer(pipeline, tfidf, model_dir="models"):
+    """
+    Save pipeline and TF-IDF vectorizer with current sklearn version metadata.
+    """
+    import sklearn
     os.makedirs(model_dir, exist_ok=True)
     model_path = os.path.join(model_dir, "svm.pkl")
     vectorizer_path = os.path.join(model_dir, "tfidf.pkl")
+    metadata_path = os.path.join(model_dir, "model_metadata.txt")
+    
+    # Save models
     joblib.dump(pipeline.named_steps['classifier'], model_path)
     joblib.dump(tfidf, vectorizer_path)
+    
+    # Save metadata including sklearn version
+    with open(metadata_path, 'w') as f:
+        f.write(f"sklearn_version: {sklearn.__version__}\n")
+        f.write(f"model_saved_at: {datetime.now().isoformat()}\n")
+        f.write(f"model_type: SVM with TF-IDF\n")
+    
     return model_path, vectorizer_path
 
 def load_saved_model(model_dir="models"):
+    """
+    Load saved SVM model and TF-IDF vectorizer with version compatibility handling.
+    Suppresses sklearn version warnings for better user experience.
+    """
     model_path = os.path.join(model_dir, "svm.pkl")
     vectorizer_path = os.path.join(model_dir, "tfidf.pkl")
+    
     if os.path.exists(model_path) and os.path.exists(vectorizer_path):
-        svm_model = joblib.load(model_path)
-        tfidf_vectorizer = joblib.load(vectorizer_path)
-        return svm_model, tfidf_vectorizer
+        try:
+            # Suppress sklearn version warnings during model loading
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+                warnings.filterwarnings("ignore", message=".*Trying to unpickle estimator.*")
+                
+                svm_model = joblib.load(model_path)
+                tfidf_vectorizer = joblib.load(vectorizer_path)
+                
+                # Validate that models are functional
+                if hasattr(svm_model, 'predict') and hasattr(tfidf_vectorizer, 'transform'):
+                    return svm_model, tfidf_vectorizer
+                else:
+                    print("Warning: Loaded models may not be functional due to version compatibility")
+                    return svm_model, tfidf_vectorizer
+                    
+        except Exception as e:
+            print(f"Error loading models: {str(e)}")
+            return None, None
     return None, None
 
 def load_saved_model_tanpa_smote(model_dir="models"):
+    """
+    Load saved SVM model and TF-IDF vectorizer (tanpa SMOTE) with version compatibility handling.
+    Suppresses sklearn version warnings for better user experience.
+    """
     model_path = os.path.join(model_dir, "svm_model_tanpa_smote.pkl")
     vectorizer_path = os.path.join(model_dir, "tfidf_vectorizer_tanpa_smote.pkl")
+    
     if os.path.exists(model_path) and os.path.exists(vectorizer_path):
-        svm_model = joblib.load(model_path)
-        tfidf_vectorizer = joblib.load(vectorizer_path)
-        return svm_model, tfidf_vectorizer
+        try:
+            # Suppress sklearn version warnings during model loading
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning, module="sklearn")
+                warnings.filterwarnings("ignore", message=".*Trying to unpickle estimator.*")
+                
+                svm_model = joblib.load(model_path)
+                tfidf_vectorizer = joblib.load(vectorizer_path)
+                
+                # Validate that models are functional
+                if hasattr(svm_model, 'predict') and hasattr(tfidf_vectorizer, 'transform'):
+                    return svm_model, tfidf_vectorizer
+                else:
+                    print("Warning: Loaded models may not be functional due to version compatibility")
+                    return svm_model, tfidf_vectorizer
+                    
+        except Exception as e:
+            print(f"Error loading tanpa SMOTE models: {str(e)}")
+            return None, None
     return None, None
 
+def check_model_compatibility():
+    """
+    Check if saved models are compatible with current sklearn version.
+    Returns a tuple (is_compatible, error_message).
+    """
+    import warnings
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", message=".*Trying to unpickle estimator.*")
+            
+            # Try loading models
+            svm_model, tfidf_vectorizer = load_saved_model()
+            if svm_model is not None and tfidf_vectorizer is not None:
+                # Try a basic prediction to test functionality
+                test_text = ["test"]
+                try:
+                    tfidf_vectorizer.transform(test_text)
+                    return True, "Models are compatible"
+                except Exception as e:
+                    return False, f"Models loaded but not functional: {str(e)}"
+            else:
+                return False, "Models could not be loaded"
+                
+    except UserWarning as e:
+        if "Trying to unpickle estimator" in str(e):
+            return False, f"Version incompatibility detected: {str(e)}"
+        return False, f"Warning during model loading: {str(e)}"
+    except Exception as e:
+        return False, f"Error checking compatibility: {str(e)}"
+
 def get_or_train_model(data, preprocessing_options=None, batch_size=1000, use_tanpa_smote=False):
+    """
+    Enhanced model loading with automatic retraining on compatibility issues.
+    """
     from sklearn.pipeline import Pipeline
+    
+    # Check model compatibility first
+    is_compatible, compatibility_msg = check_model_compatibility()
+    
+    if not is_compatible:
+        st.warning(f"⚠️ Model compatibility issue detected: {compatibility_msg}")
+        st.info("🔄 Automatically retraining models with current sklearn version...")
+        
+        # Force retrain
+        pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm = train_model(data, preprocessing_options, batch_size)
+        save_model_and_vectorizer(pipeline, tfidf)
+        return pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm
+    
+    # Try to load existing models
     if use_tanpa_smote:
         svm_model, tfidf_vectorizer = load_saved_model_tanpa_smote()
     else:
         svm_model, tfidf_vectorizer = load_saved_model()
+        
     if svm_model is not None and tfidf_vectorizer is not None:
         # Model sudah ada, tidak perlu training ulang
         tfidf = tfidf_vectorizer
@@ -418,6 +565,7 @@ def get_or_train_model(data, preprocessing_options=None, batch_size=1000, use_ta
             ('classifier', svm)
         ])
         return pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm
+    
     # Jika model belum ada, lakukan training dan simpan
     pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm = train_model(data, preprocessing_options, batch_size)
     save_model_and_vectorizer(pipeline, tfidf)

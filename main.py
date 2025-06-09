@@ -1,25 +1,27 @@
 import streamlit as st
 
-# 2. Konfigurasi halaman Streamlit (dinamis sesuai status login)
-def get_page_config():
-    """Mengembalikan konfigurasi page (icon, layout, sidebar) sesuai status login user."""
-    # Note: We need to set a default config since session_state might not be available yet
-    # We'll handle dynamic behavior in the main function
-    return {
-        'page_title': "GoRide Sentiment Analysis",
-        'page_icon': "🔐",
-        'layout': "centered",
-        'initial_sidebar_state': "collapsed"
-    }
+# 1. Cek status login dari session_state (harus sebelum komponen Streamlit lain)
+logged_in = False
+try:
+    logged_in = st.session_state.get('logged_in', False)
+except Exception:
+    logged_in = False
 
-# Konfigurasi page WAJIB dipanggil sebelum komponen Streamlit lain
-# Set default configuration that will work for login page
-st.set_page_config(
-    page_title="GoRide Sentiment Analysis",
-    page_icon="🔐",
-    layout="centered",
-    initial_sidebar_state="collapsed"
-)
+# 2. Konfigurasi page dinamis sesuai status login
+if logged_in:
+    st.set_page_config(
+        page_title="GoRide Sentiment Analysis",
+        page_icon="🛵",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+else:
+    st.set_page_config(
+        page_title="GoRide Sentiment Analysis",
+        page_icon="🔐",
+        layout="centered",
+        initial_sidebar_state="expanded"
+    )
 
 from ui.auth import auth
 from ui.tools.Dashboard_Ringkasan import render_dashboard
@@ -39,7 +41,10 @@ def login_page():
         """,
         unsafe_allow_html=True
     )
-
+    # Jika login sukses, redirect agar page_config baru diterapkan
+    if st.session_state.get('login_success', False):
+        st.markdown('<meta http-equiv="refresh" content="0;url=/" />', unsafe_allow_html=True)
+        return
     auth.main()
 
 def logout_page():

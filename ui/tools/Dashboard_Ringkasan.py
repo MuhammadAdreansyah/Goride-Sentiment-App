@@ -32,6 +32,76 @@ from ui.utils import (
     preprocess_text, get_word_frequencies, get_ngrams, create_wordcloud, get_table_download_link
 )
 
+@st.cache_data(ttl=3600)
+def safe_create_wordcloud(text: str, max_words: int = 100, max_length: int = 10000, timeout_seconds: int = 15) -> Optional[Any]:
+    """
+    Safely create wordcloud with timeout and memory management.
+    Compatible with Windows and Unix systems.
+    """
+    from typing import List, Any as TypingAny
+    
+    # Pre-process text to reduce complexity
+    if len(text) > max_length:
+        st.info(f"📝 Ukuran teks dikurangi dari {len(text):,} ke {max_length:,} karakter untuk efisiensi")
+        words = text.split()
+        sampled_words = random.sample(words, min(max_length // 10, len(words)))
+        text = " ".join(sampled_words)
+    
+    # Check memory usage if psutil is available
+    reduce_complexity = False
+    try:
+        if psutil is not None:
+            process = psutil.Process(os.getpid())
+            current_memory = process.memory_info().rss / 1024 / 1024
+            if current_memory > 1000:  # More than 1GB
+                reduce_complexity = True
+        else:
+            # If psutil not available, check text length as proxy
+            if len(text) > 50000:
+                reduce_complexity = True
+    except:
+        # If error with psutil, fallback to text length check
+        if len(text) > 50000:
+            reduce_complexity = True
+    
+    if reduce_complexity or len(text) > 100000:
+        max_words = min(50, max_words)
+        st.info("⚡ Mengurangi kompleksitas word cloud untuk performa optimal")
+    
+    # Use threading for timeout (Windows compatible)
+    result: List[Optional[TypingAny]] = [None]
+    error: List[Optional[str]] = [None]
+    
+    def target_func():
+        try:
+            result[0] = create_wordcloud(text, max_words=max_words)
+        except Exception as e:
+            error[0] = str(e)
+    
+    try:
+        thread = threading.Thread(target=target_func)
+        start_time = time.time()
+        thread.start()
+        thread.join(timeout_seconds)
+        generation_time = time.time() - start_time
+        
+        if thread.is_alive():
+            st.warning(f"⏱️ Pembuatan word cloud melebihi batas waktu ({timeout_seconds}s)")
+            return None
+        
+        if error[0]:
+            st.error(f"❌ Error dalam pembuatan word cloud: {error[0]}")
+            return None
+            
+        if generation_time > 5:
+            st.info(f"⏱️ Word cloud berhasil dibuat dalam {generation_time:.1f} detik")
+            
+        return result[0]
+        
+    except Exception as e:
+        st.error(f"❌ Error dalam proses threading: {str(e)}")
+        return None
+
 def render_dashboard():
     # Sinkronisasi status login dari cookie ke session_state (penting untuk refresh)
     auth.sync_login_state()
@@ -124,9 +194,6 @@ def render_dashboard():
     
     metrics = calculate_metrics(filtered_data)
     
-    # Success message for filtered data
-    st.success(f"✅ Berhasil memuat {metrics['total']:,} ulasan dalam rentang {start_date.strftime('%d/%m/%Y')} - {end_date.strftime('%d/%m/%Y')}")
-    
     # Key metrics section with better layout
     st.markdown("## 📈 Ringkasan Metrik Utama")
     col1, col2, col3, col4 = st.columns(4)
@@ -212,77 +279,6 @@ def render_dashboard():
     if topic_data.empty:
         st.error("❌ Dataset kosong setelah filtering. Mohon periksa filter yang dipilih.")
         return
-    
-    # Add the safe_create_wordcloud function before the tab section
-    @st.cache_data(ttl=3600)
-    def safe_create_wordcloud(text: str, max_words: int = 100, max_length: int = 10000, timeout_seconds: int = 15) -> Optional[Any]:
-        """
-        Safely create wordcloud with timeout and memory management.
-        Compatible with Windows and Unix systems.
-        """
-        from typing import List, Any as TypingAny
-        
-        # Pre-process text to reduce complexity
-        if len(text) > max_length:
-            st.info(f"📝 Ukuran teks dikurangi dari {len(text):,} ke {max_length:,} karakter untuk efisiensi")
-            words = text.split()
-            sampled_words = random.sample(words, min(max_length // 10, len(words)))
-            text = " ".join(sampled_words)
-        
-        # Check memory usage if psutil is available
-        reduce_complexity = False
-        try:
-            if psutil is not None:
-                process = psutil.Process(os.getpid())
-                current_memory = process.memory_info().rss / 1024 / 1024
-                if current_memory > 1000:  # More than 1GB
-                    reduce_complexity = True
-            else:
-                # If psutil not available, check text length as proxy
-                if len(text) > 50000:
-                    reduce_complexity = True
-        except:
-            # If error with psutil, fallback to text length check
-            if len(text) > 50000:
-                reduce_complexity = True
-        
-        if reduce_complexity or len(text) > 100000:
-            max_words = min(50, max_words)
-            st.info("⚡ Mengurangi kompleksitas word cloud untuk performa optimal")
-        
-        # Use threading for timeout (Windows compatible)
-        result: List[Optional[TypingAny]] = [None]
-        error: List[Optional[str]] = [None]
-        
-        def target_func():
-            try:
-                result[0] = create_wordcloud(text, max_words=max_words)
-            except Exception as e:
-                error[0] = str(e)
-        
-        try:
-            thread = threading.Thread(target=target_func)
-            start_time = time.time()
-            thread.start()
-            thread.join(timeout_seconds)
-            generation_time = time.time() - start_time
-            
-            if thread.is_alive():
-                st.warning(f"⏱️ Pembuatan word cloud melebihi batas waktu ({timeout_seconds}s)")
-                return None
-            
-            if error[0]:
-                st.error(f"❌ Error dalam pembuatan word cloud: {error[0]}")
-                return None
-                
-            if generation_time > 5:
-                st.info(f"⏱️ Word cloud berhasil dibuat dalam {generation_time:.1f} detik")
-                
-            return result[0]
-            
-        except Exception as e:
-            st.error(f"❌ Error dalam proses threading: {str(e)}")
-            return None
     
     # Main analysis section
     st.markdown("---")
@@ -645,7 +641,7 @@ def render_dashboard():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("#### 😊 Analisis Kata Positif")
+            st.markdown("#### 😊 Wordcloud - Ulasan Positif")
             positive_reviews = topic_data[topic_data['sentiment'] == 'POSITIF']
             
             if not positive_reviews.empty:
@@ -659,7 +655,7 @@ def render_dashboard():
                             fig, ax = plt.subplots(figsize=(10, 6))
                             ax.imshow(pos_wordcloud, interpolation='bilinear')
                             ax.axis('off')
-                            ax.set_title('Word Cloud - Ulasan Positif', fontsize=14, fontweight='bold')
+                            # ax.set_title('Word Cloud - Ulasan Positif', fontsize=14, fontweight='bold')
                             st.pyplot(fig, use_container_width=True)
                         else:
                             st.warning("⚠️ Tidak dapat membuat word cloud untuk ulasan positif")
@@ -698,7 +694,7 @@ def render_dashboard():
                 st.info("😔 Tidak ada ulasan positif dalam data yang dipilih")
         
         with col2:
-            st.markdown("#### 😞 Analisis Kata Negatif")
+            st.markdown("#### 😞 Wordcloud Ulasan Negatif")
             negative_reviews = topic_data[topic_data['sentiment'] == 'NEGATIF']
             
             if not negative_reviews.empty:
@@ -712,7 +708,7 @@ def render_dashboard():
                             fig, ax = plt.subplots(figsize=(10, 6))
                             ax.imshow(neg_wordcloud, interpolation='bilinear')
                             ax.axis('off')
-                            ax.set_title('Word Cloud - Ulasan Negatif', fontsize=14, fontweight='bold')
+                            # ax.set_title('Word Cloud - Ulasan Negatif', fontsize=14, fontweight='bold')
                             st.pyplot(fig, use_container_width=True)
                         else:
                             st.warning("⚠️ Tidak dapat membuat word cloud untuk ulasan negatif")
