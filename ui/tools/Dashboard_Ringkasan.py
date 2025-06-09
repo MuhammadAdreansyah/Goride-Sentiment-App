@@ -1,17 +1,33 @@
 import streamlit as st
-from ui.auth import auth
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import plotly.graph_objects as go
 import base64
 import random
 import os
 import sys
+import threading
+import time
+import platform
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
+
+# Try to import psutil, fall back gracefully if not available
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+# Add parent directory to path for imports
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils import (
+
+# Import from auth module
+from ui.auth import auth
+
+# Import from utils module  
+from ui.utils import (
     load_sample_data, get_or_train_model, display_model_metrics, predict_sentiment,
     preprocess_text, get_word_frequencies, get_ngrams, create_wordcloud, get_table_download_link
 )
@@ -23,6 +39,7 @@ def render_dashboard():
     if st.session_state.get('login_success', False):
         st.toast(f"User {st.session_state.get('user_email', '')} login successfully!", icon="✅")
         st.session_state['login_success'] = False
+    
     # Load data dan model (cache)
     data = load_sample_data()
     if 'data_loaded_toast_shown' not in st.session_state:
@@ -31,6 +48,7 @@ def render_dashboard():
         else:
             st.toast("Data gagal dimuat atau kosong!", icon="⚠️")
         st.session_state['data_loaded_toast_shown'] = True
+    
     preprocessing_options = {
         'lowercase': True,
         'clean_text': True,
@@ -43,7 +61,10 @@ def render_dashboard():
         'stemming': True,
         'rejoin': True
     }
-    pipeline, accuracy, precision, recall, f1, confusion_mat, X_test, y_test, tfidf_vectorizer, svm_model = get_or_train_model(data, preprocessing_options)    # Header section with better spacing
+    
+    pipeline, accuracy, precision, recall, f1, confusion_mat, X_test, y_test, tfidf_vectorizer, svm_model = get_or_train_model(data, preprocessing_options)
+    
+    # Header section with better spacing
     st.markdown("# 📊 Dashboard Analisis Sentimen GoRide")
     st.markdown("### 🔍 Analisis Komprehensif Ulasan Pengguna dari Google Play Store")
     
@@ -137,7 +158,9 @@ def render_dashboard():
             value=f"{metrics['satisfaction_score']:.1f}%", 
             delta=f"{metrics['satisfaction_score'] - 70:.1f}% dari target 70%",
             delta_color="normal" if metrics['satisfaction_score'] >= 70 else "inverse"
-        )    # Preprocessing section
+        )
+    
+    # Preprocessing section
     if 'teks_preprocessing' not in data.columns:
         with st.spinner("🔄 Melakukan preprocessing teks untuk seluruh data..."):
             data.loc[:, 'teks_preprocessing'] = data['review_text'].astype(str).apply(lambda x: preprocess_text(x, preprocessing_options))
@@ -184,92 +207,81 @@ def render_dashboard():
     if 'teks_preprocessing' not in topic_data.columns:
         topic_data = topic_data.copy()
         topic_data.loc[:, 'teks_preprocessing'] = topic_data['review_text'].astype(str).apply(lambda x: preprocess_text(x, preprocessing_options))
-      # Final validation
+      
+    # Final validation
     if topic_data.empty:
         st.error("❌ Dataset kosong setelah filtering. Mohon periksa filter yang dipilih.")
         return
     
     # Add the safe_create_wordcloud function before the tab section
     @st.cache_data(ttl=3600)
-    def safe_create_wordcloud(text, max_words=100, max_length=10000, timeout_seconds=15):
-        import threading
-        import signal
-        import time
+    def safe_create_wordcloud(text: str, max_words: int = 100, max_length: int = 10000, timeout_seconds: int = 15) -> Optional[Any]:
+        """
+        Safely create wordcloud with timeout and memory management.
+        Compatible with Windows and Unix systems.
+        """
+        from typing import List, Any as TypingAny
         
-        class TimeoutException(Exception):
-            pass
-        
-        def timeout_handler(signum, frame):
-            raise TimeoutException("Wordcloud generation timed out")
-        
-        result = [None]
+        # Pre-process text to reduce complexity
         if len(text) > max_length:
             st.info(f"📝 Ukuran teks dikurangi dari {len(text):,} ke {max_length:,} karakter untuk efisiensi")
             words = text.split()
-            sampled_words = random.sample(words, min(max_length, len(words)))
+            sampled_words = random.sample(words, min(max_length // 10, len(words)))
             text = " ".join(sampled_words)
         
+        # Check memory usage if psutil is available
         reduce_complexity = False
         try:
-            import psutil
-            process = psutil.Process(os.getpid())
-            current_memory = process.memory_info().rss / 1024 / 1024
-            if current_memory > 1000:
+            if psutil is not None:
+                process = psutil.Process(os.getpid())
+                current_memory = process.memory_info().rss / 1024 / 1024
+                if current_memory > 1000:  # More than 1GB
+                    reduce_complexity = True
+            else:
+                # If psutil not available, check text length as proxy
+                if len(text) > 50000:
+                    reduce_complexity = True
+        except:
+            # If error with psutil, fallback to text length check
+            if len(text) > 50000:
                 reduce_complexity = True
-        except Exception:
-            pass
         
         if reduce_complexity or len(text) > 100000:
             max_words = min(50, max_words)
             st.info("⚡ Mengurangi kompleksitas word cloud untuk performa optimal")
         
+        # Use threading for timeout (Windows compatible)
+        result: List[Optional[TypingAny]] = [None]
+        error: List[Optional[str]] = [None]
+        
+        def target_func():
+            try:
+                result[0] = create_wordcloud(text, max_words=max_words)
+            except Exception as e:
+                error[0] = str(e)
+        
         try:
-            if hasattr(signal, 'SIGALRM'):
-                signal.signal(signal.SIGALRM, timeout_handler)
-                signal.alarm(timeout_seconds)
-                start_time = time.time()
-                wordcloud = create_wordcloud(text, max_words=max_words)
-                generation_time = time.time() - start_time
-                signal.alarm(0)
-            else:
-                result = [None]
-                error = [None]
-                
-                def target_func():
-                    try:
-                        result[0] = create_wordcloud(text, max_words=max_words)
-                    except Exception as e:
-                        error[0] = str(e)
-                
-                thread = threading.Thread(target=target_func)
-                start_time = time.time()
-                thread.start()
-                thread.join(timeout_seconds)
-                generation_time = time.time() - start_time
-                
-                if thread.is_alive():
-                    st.warning(f"⏱️ Timeout {timeout_seconds}s, menggunakan sampel kecil...")
-                    words = text.split()
-                    smaller_sample = random.sample(words, min(1000, len(words)))
-                    sampled_text = " ".join(smaller_sample)
-                    return create_wordcloud(sampled_text, max_words=50)
-                
-                wordcloud = result[0]
-                if error[0] is not None:
-                    raise Exception(error[0])
+            thread = threading.Thread(target=target_func)
+            start_time = time.time()
+            thread.start()
+            thread.join(timeout_seconds)
+            generation_time = time.time() - start_time
             
-            if generation_time > 3:
-                st.info(f"✅ Word cloud dibuat dalam {generation_time:.1f} detik")
-            return wordcloud
+            if thread.is_alive():
+                st.warning(f"⏱️ Pembuatan word cloud melebihi batas waktu ({timeout_seconds}s)")
+                return None
             
-        except TimeoutException:
-            st.warning(f"⏱️ Timeout {timeout_seconds}s, menggunakan sampel kecil...")
-            words = text.split()
-            smaller_sample = random.sample(words, min(1000, len(words)))
-            sampled_text = " ".join(smaller_sample)
-            return create_wordcloud(sampled_text, max_words=50)
+            if error[0]:
+                st.error(f"❌ Error dalam pembuatan word cloud: {error[0]}")
+                return None
+                
+            if generation_time > 5:
+                st.info(f"⏱️ Word cloud berhasil dibuat dalam {generation_time:.1f} detik")
+                
+            return result[0]
+            
         except Exception as e:
-            st.error(f"❌ Error membuat word cloud: {str(e)}")
+            st.error(f"❌ Error dalam proses threading: {str(e)}")
             return None
     
     # Main analysis section
@@ -764,7 +776,8 @@ def render_dashboard():
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.info("📝 Tidak ditemukan frasa yang signifikan")
-            else:                st.warning("⚠️ Tidak ada teks yang dapat dianalisis untuk bigram")
+            else:
+                st.warning("⚠️ Tidak ada teks yang dapat dianalisis untuk bigram")
         except Exception as e:
             st.error(f"❌ Error dalam analisis bigram: {str(e)}")
     

@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import re
 import time
-import signal
+import os
 from datetime import datetime
 import random
 from collections import Counter
@@ -27,7 +27,6 @@ import io
 import base64
 from wordcloud import WordCloud
 import networkx as nx
-import os
 from pathlib import Path
 import traceback
 try:
@@ -113,8 +112,15 @@ def preprocess_text(text, options=None):
         # Normalisasi slang
         if options.get('normalize_slang', False) and slang_dict:
             def normalize_word(word):
-                return slang_dict.get(word, word)
-            tokens = ' '.join([normalize_word(w) for w in tokens.split()])
+                normalized = slang_dict.get(word, word)
+                return normalized if normalized is not None else word
+            normalized_words = []
+            for w in tokens.split():
+                if w.strip():
+                    norm_word = normalize_word(w)
+                    if norm_word is not None and norm_word.strip():
+                        normalized_words.append(norm_word)
+            tokens = ' '.join(normalized_words)
         # Hapus karakter berulang (contoh: "baguuuusss" -> "bagus")
         if options.get('remove_repeated', False):
             tokens = re.sub(r'(\w)\1{2,}', r'\1', tokens)
@@ -131,13 +137,21 @@ def preprocess_text(text, options=None):
             tokens = [tokens] if isinstance(tokens, str) else tokens
         # Hapus stopwords
         if options.get('remove_stopwords', False) and isinstance(tokens, list):
-            tokens = [w for w in tokens if w not in stopword_list and len(w) > 1]
+            tokens = [w for w in tokens if w is not None and w not in stopword_list and len(str(w)) > 1]
         # Stemming
         if options.get('stemming', False) and isinstance(tokens, list):
-            tokens = [stemmer.stem(w) for w in tokens]
+            stemmed_tokens = []
+            for w in tokens:
+                if w is not None and w.strip():
+                    stemmed = stemmer.stem(w)
+                    if stemmed is not None and stemmed.strip():
+                        stemmed_tokens.append(stemmed)
+            tokens = stemmed_tokens
         # Gabungkan kembali jika rejoin True
         if options.get('rejoin', True) and isinstance(tokens, list):
-            return ' '.join(tokens)
+            # Filter out None values and empty strings before joining
+            filtered_tokens = [token for token in tokens if token is not None and str(token).strip()]
+            return ' '.join(filtered_tokens)
         return tokens if isinstance(tokens, list) else str(text)
     except Exception as e:
         import streamlit as st
@@ -166,7 +180,20 @@ def get_ngrams(text, n, top_n=10):
         return {}
 
 def create_wordcloud(text, max_words=100, background_color='white'):
+    """
+    Create wordcloud with proper error handling and type checking.
+    """
     try:
+        # Ensure text is a string
+        if isinstance(text, list):
+            text = ' '.join(filter(None, text))  # Filter out None values
+        elif not isinstance(text, str):
+            text = str(text)
+        
+        # Check if text is empty after processing
+        if not text.strip():
+            return None
+            
         wordcloud = WordCloud(
             width=800,
             height=400,
@@ -175,7 +202,7 @@ def create_wordcloud(text, max_words=100, background_color='white'):
             colormap='viridis',
             contour_width=1,
             contour_color='steelblue'
-        ).generate(text if isinstance(text, str) else ' '.join(text))
+        ).generate(text)
         return wordcloud
     except Exception as e:
         st.error(f"Error generating word cloud: {str(e)}")

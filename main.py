@@ -3,23 +3,23 @@ import streamlit as st
 # 2. Konfigurasi halaman Streamlit (dinamis sesuai status login)
 def get_page_config():
     """Mengembalikan konfigurasi page (icon, layout, sidebar) sesuai status login user."""
-    if st.session_state.get('logged_in') and st.session_state.get('user_email'):
-        return {
-            'page_title': "GoRide Sentiment Analysis",
-            'page_icon': "📊",
-            'layout': "wide",
-            'initial_sidebar_state': "auto"
-        }
-    else:
-        return {
-            'page_title': "GoRide Sentiment Analysis",
-            'page_icon': "🔐",
-            'layout': "centered",
-            'initial_sidebar_state': "collapsed"
-        }
+    # Note: We need to set a default config since session_state might not be available yet
+    # We'll handle dynamic behavior in the main function
+    return {
+        'page_title': "GoRide Sentiment Analysis",
+        'page_icon': "🔐",
+        'layout': "centered",
+        'initial_sidebar_state': "collapsed"
+    }
 
 # Konfigurasi page WAJIB dipanggil sebelum komponen Streamlit lain
-st.set_page_config(**get_page_config())
+# Set default configuration that will work for login page
+st.set_page_config(
+    page_title="GoRide Sentiment Analysis",
+    page_icon="🔐",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
 from ui.auth import auth
 from ui.tools.Dashboard_Ringkasan import render_dashboard

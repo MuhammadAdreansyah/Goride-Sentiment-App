@@ -1,4 +1,4 @@
-#!D:\1\.venv\Scripts\python.exe
+#!D:\Goride-Sentiment-App-main\.venv\Scripts\python.exe
 # -*- coding: utf-8 -*-
 # Copyright 2025 Google LLC
 #
