@@ -144,10 +144,19 @@ def render_sentiment_prediction():
     elif predict_button and not text_input:
         st.error("⚠️ Silakan masukkan teks terlebih dahulu untuk diprediksi.")
 
+    # Footer
     st.markdown("---")
-    st.caption("© 2025 GoRide Sentiment Analysis App • Develop By Mhd Adreansyah")
-    st.caption("Aplikasi ini merupakan Tugas Akhir/Skripsi dibawah perlindungan Hak Cipta")
-
+    st.markdown("""
+    <div style="text-align: center; padding: 1rem; background-color: rgba(0,0,0,0.05); border-radius: 0.5rem;">
+        <p style="margin: 0; font-size: 0.9rem; color: #666;">
+            © 2025 GoRide Sentiment Analysis Dashboard • Developed by Mhd Adreansyah
+        </p>
+        <p style="margin: 0.5rem 0 0 0; font-size: 0.8rem; color: #888;">
+            🎓 Aplikasi ini merupakan bagian dari Tugas Akhir/Skripsi di bawah perlindungan Hak Cipta
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    
 # Call the function to render the UI
 if __name__ == "__main__":
     render_sentiment_prediction()

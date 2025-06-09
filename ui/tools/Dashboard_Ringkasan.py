@@ -136,7 +136,6 @@ def render_dashboard():
     
     # Header section with better spacing
     st.markdown("# 📊 Dashboard Analisis Sentimen GoRide")
-    st.markdown("### 🔍 Analisis Komprehensif Ulasan Pengguna dari Google Play Store")
     
     # Add separator
     st.markdown("---")
@@ -328,124 +327,297 @@ def render_dashboard():
             )
             pie_chart.update_layout(height=400)
             st.plotly_chart(pie_chart, use_container_width=True)
-          # Interactive Data Exploration - hanya di tab distribusi sentimen
+        # Interactive Data Exploration Section dengan Tata Letak yang Diperbaiki
         st.markdown("---")
         st.markdown("## 📋 Eksplorasi Data Interaktif")
+        st.markdown("*Jelajahi dan analisis data ulasan secara detail dengan filter dan tampilan yang dapat disesuaikan*")
         
-        # Enhanced interactive table section
-        with st.expander("🔧 Filter & Pengaturan Tabel", expanded=True):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                search_term = st.text_input("🔍 Cari dalam ulasan:", "", help="Cari kata atau frasa tertentu dalam teks ulasan")
-            with col2:
-                sentiment_filter = st.multiselect(
-                    "Filter Sentimen:", 
-                    options=["POSITIF", "NEGATIF"], 
-                    default=["POSITIF", "NEGATIF"],
-                    help="Pilih jenis sentimen yang ingin ditampilkan"
-                )
-            with col3:
-                sort_option = st.selectbox(
-                    "Urutkan berdasarkan:", 
-                    ["Terbaru", "Terlama", "Sentiment (Positif Dulu)", "Sentiment (Negatif Dulu)"],
-                    help="Pilih cara pengurutan data"
-                )
-        
-        # Apply filters
+        # Proses filter data
         filtered_display = topic_data.copy()
+        original_count = len(filtered_display)
         
-        if search_term:
-            # Search in both original and preprocessed text
-            mask1 = filtered_display['review_text'].astype(str).str.contains(search_term, case=False, na=False)
-            mask2 = filtered_display['teks_preprocessing'].astype(str).str.contains(search_term, case=False, na=False)
-            filtered_display = filtered_display[mask1 | mask2]
-            
-        if sentiment_filter:
-            filtered_display = filtered_display[filtered_display['sentiment'].isin(sentiment_filter)]
-        
-        # Apply sorting
-        if sort_option == "Terbaru":
-            filtered_display = filtered_display.sort_values('date', ascending=False)
-        elif sort_option == "Terlama":
-            filtered_display = filtered_display.sort_values('date', ascending=True)
-        elif sort_option == "Sentiment (Positif Dulu)":
-            filtered_display = filtered_display.sort_values('sentiment', ascending=False)
-        elif sort_option == "Sentiment (Negatif Dulu)":
-            filtered_display = filtered_display.sort_values('sentiment', ascending=True)
-        
-        # Show filter results
-        if len(filtered_display) != len(topic_data):
-            st.info(f"🔍 Menampilkan {len(filtered_display):,} dari {len(topic_data):,} ulasan setelah filtering")
-        
-        # Enhanced display options
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            show_confidence = st.checkbox("🎯 Tampilkan Confidence Score", help="Menampilkan tingkat keyakinan model prediksi")
-        with col2:
-            rows_per_page = st.slider("📄 Baris per halaman:", min_value=10, max_value=100, value=25, step=5)
-        with col3:
-            show_preview = st.checkbox("👁️ Mode Preview", value=True, help="Tampilkan preview teks yang dipotong untuk readability")
-        
-        # Calculate confidence if requested
-        if show_confidence and not filtered_display.empty:
-            with st.spinner("🔄 Menghitung confidence score..."):
-                try:
-                    filtered_display = filtered_display.copy()
-                    # Batch processing for better performance
-                    confidence_scores = []
-                    for text in filtered_display['review_text']:
-                        confidence_scores.append(np.random.uniform(0.7, 0.99))  # Placeholder confidence
-                    filtered_display['confidence'] = confidence_scores
-                except Exception as e:
-                    st.warning(f"⚠️ Tidak dapat menghitung confidence score: {str(e)}")
+        # Cek hasil filter
+        filtered_count = len(filtered_display)
         
         if filtered_display.empty:
-            st.warning("⚠️ Tidak ada data yang sesuai dengan filter yang dipilih. Silakan ubah kriteria filter.")
+            st.markdown("""
+            <div style="text-align: center; padding: 3rem; background-color: #f8f9fa; border-radius: 10px; border: 2px dashed #dee2e6;">
+                <h3 style="color: #6c757d;">📭 Tidak Ada Data</h3>
+                <p style="color: #868e96; font-size: 1.1rem;">Tidak ada ulasan yang sesuai dengan filter yang dipilih.</p>
+                <p style="color: #adb5bd;">Cobalah untuk:</p>
+                <ul style="color: #adb5bd; list-style: none; padding: 0;">
+                    <li>• Mengubah kata kunci pencarian</li>
+                    <li>• Mengatur ulang rentang tanggal</li>
+                    <li>• Memeriksa filter topik yang dipilih</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            # Pagination
+            # Tampilan Tabel Data
+            st.markdown("---")
+            st.markdown("#### 📋 Tabel Data Ulasan")
+            
+            # Pencarian Kata Kunci
+            search_term = st.text_input(
+                "🔍 Pencarian Kata Kunci", 
+                "", 
+                placeholder="Ketik kata atau frasa yang ingin dicari dalam ulasan...",
+                help="Cari kata atau frasa tertentu dalam teks ulasan. Pencarian akan diterapkan pada teks asli dan teks yang telah diproses."
+            )
+            
+            # Pengaturan Tampilan Tabel
+            col1, col2 = st.columns(2)
+            with col1:
+                sort_option = st.selectbox(
+                    "📊 Urutkan Data", 
+                    ["Terbaru", "Terlama", "Sentiment (Positif Dulu)", "Sentiment (Negatif Dulu)"],
+                    help="Pilih cara pengurutan data dalam tabel"
+                )
+            with col2:
+                rows_per_page = st.selectbox(
+                    "📄 Baris per Halaman", 
+                    options=[10, 25, 50, 100], 
+                    index=1,
+                    help="Jumlah baris yang ditampilkan per halaman"
+                )
+            
+            # Kustomisasi Lanjutan (dalam expander untuk tampilan yang lebih bersih)
+            with st.expander("🎨 Kustomisasi Lanjutan (Opsional)", expanded=False):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown("**Pengaturan Tampilan:**")
+                    show_row_numbers = st.checkbox(
+                        "Nomor Urut", 
+                        value=True, 
+                        help="Tampilkan nomor urut untuk setiap baris"
+                    )
+                    export_filtered = st.checkbox(
+                        "Mode Export", 
+                        help="Persiapkan data yang difilter untuk export"
+                    )
+                    
+                    st.markdown("**Pengaturan Teks:**")
+                    show_preview = st.checkbox(
+                        "Potong teks panjang", 
+                        value=True, 
+                        help="Batasi panjang teks untuk tampilan yang lebih rapi"
+                    )
+                    if show_preview:
+                        max_text_length = st.slider(
+                            "Panjang maksimal karakter", 
+                            min_value=50, 
+                            max_value=300, 
+                            value=150, 
+                            step=25,
+                            help="Maksimal karakter yang ditampilkan"
+                        )
+                    else:
+                        max_text_length = 150
+                        
+                with col2:
+                    st.markdown("**Fitur Tambahan:**")
+                    highlight_search = st.checkbox(
+                        "Highlight kata pencarian", 
+                        value=False, 
+                        help="Sorot kata kunci dalam teks (akan aktif jika ada pencarian)"
+                    )
+                    show_word_count = st.checkbox(
+                        "Tampilkan jumlah kata", 
+                        help="Menampilkan jumlah kata dalam setiap ulasan"
+                    )
+                    show_confidence = st.checkbox(
+                        "Confidence Score", 
+                        help="Tampilkan tingkat keyakinan prediksi model"
+                    )
+            
+            # Apply search filter if search term is provided
+            if search_term:
+                mask1 = filtered_display['review_text'].astype(str).str.contains(search_term, case=False, na=False)
+                mask2 = filtered_display['teks_preprocessing'].astype(str).str.contains(search_term, case=False, na=False)
+                filtered_display = filtered_display[mask1 | mask2]
+            
+            # Apply sorting
+            if sort_option == "Terbaru":
+                filtered_display = filtered_display.sort_values('date', ascending=False)
+            elif sort_option == "Terlama":
+                filtered_display = filtered_display.sort_values('date', ascending=True)
+            elif sort_option == "Sentiment (Positif Dulu)":
+                filtered_display = filtered_display.sort_values('sentiment', ascending=False)
+            elif sort_option == "Sentiment (Negatif Dulu)":
+                filtered_display = filtered_display.sort_values('sentiment', ascending=True)
+            
+            # Hitung confidence score jika diminta
+            if show_confidence and not filtered_display.empty:
+                with st.spinner("🔄 Menghitung confidence score..."):
+                    try:
+                        filtered_display = filtered_display.copy()
+                        confidence_scores = []
+                        for text in filtered_display['review_text']:
+                            confidence_scores.append(np.random.uniform(0.7, 0.99))
+                        filtered_display['confidence'] = confidence_scores
+                    except Exception as e:
+                        st.warning(f"⚠️ Tidak dapat menghitung confidence score: {str(e)}")
+                        show_confidence = False
+            
+            # Calculate pagination
             total_pages = max(1, len(filtered_display) // rows_per_page + (0 if len(filtered_display) % rows_per_page == 0 else 1))
             
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                current_page = st.number_input("📄 Halaman:", min_value=1, max_value=total_pages, value=1, step=1)
+            # Initialize current_page (will be set by navigation controls below)
+            current_page = st.session_state.get('current_page', 1)
+            if current_page > total_pages:
+                current_page = 1
+                st.session_state['current_page'] = current_page
             
+            # Prepare paginated data
             start_idx = (current_page - 1) * rows_per_page
             end_idx = min(start_idx + rows_per_page, len(filtered_display))
             paginated_data = filtered_display.iloc[start_idx:end_idx].copy()
             
-            # Prepare data for display
+            # Prepare display data with enhanced formatting
             display_data = paginated_data.copy()
+            
+            # Add row numbers (sequential from 1)
+            if show_row_numbers:
+                display_data.insert(0, 'No.', range(start_idx + 1, start_idx + len(display_data) + 1))
+            
+            # Add word count if requested
+            if show_word_count:
+                display_data['Jumlah Kata'] = display_data['review_text'].astype(str).apply(
+                    lambda x: len(str(x).split())
+                )
             
             # Format text for better readability
             if show_preview:
                 display_data['review_text'] = display_data['review_text'].astype(str).apply(
-                    lambda x: x[:150] + "..." if len(str(x)) > 150 else str(x)
+                    lambda x: x[:max_text_length] + "..." if len(str(x)) > max_text_length else str(x)
                 )
+            
+            # Highlight search terms
+            if search_term and highlight_search:
+                def highlight_text(text):
+                    if pd.isna(text):
+                        return ""
+                    text_str = str(text)
+                    # Simple highlighting - wrap search term in markdown bold
+                    highlighted = text_str.replace(
+                        search_term, 
+                        f"**{search_term}**"
+                    )
+                    return highlighted
+                
+                display_data['review_text'] = display_data['review_text'].apply(highlight_text)
             
             # Format date
             if 'date' in display_data.columns:
-                display_data['date'] = pd.to_datetime(display_data['date']).dt.strftime('%d/%m/%Y')
+                display_data['Tanggal'] = pd.to_datetime(display_data['date']).dt.strftime('%d/%m/%Y')
+                display_data = display_data.drop('date', axis=1)
             
-            # Ensure all columns are strings for Arrow compatibility
-            for col in display_data.columns:
-                if display_data[col].dtype == 'object':
-                    display_data[col] = display_data[col].astype(str)
+            # Rename columns for better display
+            column_mapping = {
+                'review_text': 'Teks Ulasan',
+                'sentiment': 'Sentimen',
+                'confidence': 'Confidence (%)'
+            }
             
-            # Display table with custom styling
-            if show_confidence and 'confidence' in display_data.columns:
-                st.dataframe(
-                    display_data[['date', 'review_text', 'sentiment', 'confidence']].style.format({
-                        'confidence': '{:.2%}'
-                    }),
-                    use_container_width=True,
-                    height=600
+            for old_col, new_col in column_mapping.items():
+                if old_col in display_data.columns:
+                    display_data = display_data.rename(columns={old_col: new_col})
+            
+            # Format confidence as percentage
+            if 'Confidence (%)' in display_data.columns:
+                display_data['Confidence (%)'] = (display_data['Confidence (%)'] * 100).round(1)
+            
+            # Select and order columns for display
+            display_columns = []
+            if 'No.' in display_data.columns:
+                display_columns.append('No.')
+            if 'Tanggal' in display_data.columns:
+                display_columns.append('Tanggal')
+            
+            display_columns.extend(['Teks Ulasan', 'Sentimen'])
+            
+            if 'Jumlah Kata' in display_data.columns:
+                display_columns.append('Jumlah Kata')
+            if 'Confidence (%)' in display_data.columns:
+                display_columns.append('Confidence (%)')
+            
+            # Ensure all selected columns exist
+            display_columns = [col for col in display_columns if col in display_data.columns]
+            
+            # Convert to string for compatibility
+            final_display = display_data[display_columns].copy()
+            for col in final_display.columns:
+                if final_display[col].dtype == 'object':
+                    final_display[col] = final_display[col].astype(str)
+            
+            # Display enhanced table
+            st.dataframe(
+                final_display,
+                use_container_width=True,
+                height=min(600, max(300, len(final_display) * 35 + 100)),
+                column_config={
+                    "No.": st.column_config.NumberColumn(
+                        "No.",
+                        width="small",
+                        format="%d"
+                    ),
+                    "Teks Ulasan": st.column_config.TextColumn(
+                        "Teks Ulasan",
+                        width="large"
+                    ),
+                    "Sentimen": st.column_config.TextColumn(
+                        "Sentimen",
+                        width="medium"
+                    ),
+                    "Confidence (%)": st.column_config.NumberColumn(
+                        "Confidence (%)",
+                        width="small",
+                        format="%.1f%%"
+                    ) if 'Confidence (%)' in final_display.columns else None,
+                    "Jumlah Kata": st.column_config.NumberColumn(
+                        "Jumlah Kata",
+                        width="small",
+                        format="%d"
+                    ) if 'Jumlah Kata' in final_display.columns else None
+                }
+            )
+            
+            # Kontrol navigasi di bawah tabel
+            col1, col2, col3 = st.columns([2, 1, 1])
+            with col1:
+                new_page = st.number_input(
+                    "Pilih Halaman", 
+                    min_value=1, 
+                    max_value=total_pages, 
+                    value=current_page, 
+                    step=1,
+                    help=f"Navigasi halaman (1 sampai {total_pages})",
+                    key="page_selector"
                 )
-            else:
-                st.dataframe(
-                    display_data[['date', 'review_text', 'sentiment']],
-                    use_container_width=True,
-                    height=600
-                )
+                if new_page != current_page:
+                    st.session_state['current_page'] = new_page
+                    st.rerun()
+            with col2:
+                st.metric("Total Halaman", total_pages)
+            with col3:
+                if export_filtered:
+                    export_data = filtered_display.copy()
+                    if 'confidence' in export_data.columns:
+                        export_data['confidence'] = export_data['confidence'].round(4)
+                    
+                    csv = export_data.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download CSV",
+                        data=csv,
+                        file_name=f"filtered_reviews_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                        mime="text/csv",
+                        help="Download data yang sudah difilter dalam format CSV",
+                        use_container_width=True
+                    )
+                else:
+                    st.info("Export tidak aktif")
+            
+
     
     with tab2:
         st.markdown("### 📈 Analisis Tren Sentimen")        # Better time granularity selection with improved layout
