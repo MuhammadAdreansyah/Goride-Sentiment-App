@@ -194,6 +194,7 @@ def send_email_verification_safe(firebase_auth: Any, id_token: str, email: str) 
 # =============================================
 
 import re
+import base64
 
 def validate_email_format(email: str) -> Tuple[bool, str]:
     """Validate email format with comprehensive rules"""
@@ -779,13 +780,13 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
             help="Kami akan mengirimkan link verifikasi ke email ini"
         )
         
-        # Real-time email validation
-        if email and email.strip() and not google_email:
-            is_valid_email, email_message = validate_email_format(email.strip())
-            if not is_valid_email:
-                st.error(f"❌ {email_message}")
-            else:
-                st.success("✅ Format email valid")
+        # # Real-time email validation
+        # if email and email.strip() and not google_email:
+        #     is_valid_email, email_message = validate_email_format(email.strip())
+        #     if not is_valid_email:
+        #         st.error(f"❌ {email_message}")
+        #     else:
+        #         st.success("✅ Format email valid")
 
         if not google_email:
             col3, col4 = st.columns(2)
@@ -796,13 +797,13 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
                     placeholder="Buat kata sandi yang kuat",
                     help="Gunakan 8+ karakter dengan campuran huruf, angka & simbol"
                 )
-                # Real-time password validation
-                if password:
-                    is_valid_pass, pass_message = validate_password(password)
-                    if not is_valid_pass:
-                        st.error(f"❌ {pass_message}")
-                    else:
-                        st.success("✅ Kata sandi memenuhi kriteria")
+                # # Real-time password validation
+                # if password:
+                #     is_valid_pass, pass_message = validate_password(password)
+                #     if not is_valid_pass:
+                #         st.error(f"❌ {pass_message}")
+                #     else:
+                #         st.success("✅ Kata sandi memenuhi kriteria")
                         
             with col4:
                 confirm_password = st.text_input(
@@ -810,12 +811,12 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
                     type="password",
                     placeholder="Masukkan ulang kata sandi"
                 )
-                # Password confirmation validation
-                if confirm_password and password:
-                    if password != confirm_password:
-                        st.error("❌ Kata sandi tidak cocok")
-                    else:
-                        st.success("✅ Kata sandi cocok")
+                # # Password confirmation validation
+                # if confirm_password and password:
+                #     if password != confirm_password:
+                #         st.error("❌ Kata sandi tidak cocok")
+                #     else:
+                #         st.success("✅ Kata sandi cocok")
         else:
             password = st.text_input(
                 "Kata Sandi (Dibuat otomatis untuk akun Google)",
@@ -1111,14 +1112,23 @@ def main() -> None:
 
         # Display welcome message with enhanced styling
         with st.container():
-            st.markdown("""
-                <div class="welcome-header">
-                    <h1 style='text-align: center;'>Selamat Datang 👋</h1>
-                    <p style='text-align: center; color: #6c757d; margin-bottom: 2rem; font-size: 1.1rem;'>
-                        Ini aplikasi tugas akhir saya, setelah login anda akan melihat karya yang saya ciptakan dari pagi sampai ke pagi lagi 😂
-                    </p>
-                </div>
-            """, unsafe_allow_html=True)
+            # Load the logo image
+            try:
+                logo_path = "ui/icon/logo_app.png"
+                with open(logo_path, "rb") as img_file:
+                    img_base64 = base64.b64encode(img_file.read()).decode()
+                st.markdown(f"""
+                    <div class="welcome-header">
+                    <img src="data:image/png;base64,{img_base64}" alt="Logo" style="width:120px; display:block; margin:0 auto 2px auto;">
+                    <div style="text-align:center; font-size:2rem; font-weight:bold; margin-bottom:1.2rem;">Selamat Datang!</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            except FileNotFoundError:
+                st.markdown("""
+                    <div class="welcome-header">
+                    <div style='text-align:center; font-size:2rem; font-weight:bold; margin-bottom:1.2rem;'>Selamat Datang!</div>
+                    </div>
+                """, unsafe_allow_html=True)
 
         # Tampilkan pesan logout jika ada query param
         if st.query_params.get("logout") == "1":
