@@ -23,6 +23,8 @@ import asyncio
 import httpx
 import logging
 import time
+import base64
+import re
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict, Union, Any
 from urllib.parse import urlencode
@@ -192,9 +194,6 @@ def send_email_verification_safe(firebase_auth: Any, id_token: str, email: str) 
 # =============================================
 # ENHANCED VALIDATION SYSTEM
 # =============================================
-
-import re
-import base64
 
 def validate_email_format(email: str) -> Tuple[bool, str]:
     """Validate email format with comprehensive rules"""
@@ -623,15 +622,15 @@ def display_login_form(firebase_auth: Any) -> None:
         col1, col2 = st.columns([1, 2])
         with col1:
             remember = st.checkbox("Remember me", value=True, help="Simpan login selama 30 hari")
-        with col2:
-            st.markdown(
-                """
-                <div class='forgot-password-right'><a href='#' class='reset-link'>Lupa Kata Sandi?</a></div>
-                """,
-                unsafe_allow_html=True
-            )
+        # with col2:
+        #     st.markdown(
+        #         """
+        #         <div class='forgot-password-right'><a href='#' class='reset-link'>Lupa Kata Sandi?</a></div>
+        #         """,
+        #         unsafe_allow_html=True
+        #     )
 
-        if st.form_submit_button("Lanjutkan dengan Email", use_container_width=True):
+        if st.form_submit_button("Lanjutkan dengan Email", use_container_width=True, type="primary"):
             if email and password:
                 # Validate email format before attempting login
                 is_valid_email, email_message = validate_email_format(email)
@@ -717,7 +716,7 @@ def display_login_form(firebase_auth: Any) -> None:
             </div>
         """, unsafe_allow_html=True)
 
-        google_login_btn = st.form_submit_button("Lanjutkan dengan Google", use_container_width=True)
+        google_login_btn = st.form_submit_button("Lanjutkan dengan Google", use_container_width=True, type="primary")
         if google_login_btn:
             with st.spinner("Mengalihkan ke Google..."):
                 try:
@@ -833,7 +832,7 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
         )
         button_text = "Daftar dengan Google" if google_email else "Buat Akun"
 
-        if st.form_submit_button(button_text, use_container_width=True):
+        if st.form_submit_button(button_text, use_container_width=True, type="primary"):
             # Update session state with current form values
             st.session_state['register_form_data'].update({
                 'first_name': first_name,
@@ -976,7 +975,7 @@ def display_reset_password_form(firebase_auth: Any) -> None:
             if not is_valid_email:
                 st.error(f"❌ {email_message}")
 
-        if st.form_submit_button("Kirim Link Reset", use_container_width=True):
+        if st.form_submit_button("Kirim Link Reset", use_container_width=True, type="primary"):
             if not email or not email.strip():
                 show_warning_toast("Silakan masukkan alamat email Anda.")
                 return
@@ -1029,33 +1028,107 @@ def main() -> None:
         # Note: Page configuration is now handled by main.py
         # for better coordination between authentication and main views
         
-        # Custom CSS styling - but page configuration is handled by main app
+        # Custom CSS styling - Fixed viewport layout without scroll
         st.markdown("""
             <style>
-            .main { padding: 2rem; }
-            .stSelectbox { margin-bottom: 2rem; }
+            /* Reset dan viewport configuration */
+            html, body {
+                height: 100vh !important;
+                max-height: 100vh !important;
+                overflow: hidden !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            
+            /* Streamlit container fixes */
+            .main .block-container {
+                padding-top: 1rem !important;
+                padding-bottom: 1rem !important;
+                max-height: 100vh !important;
+                overflow: hidden !important;
+            }
+            
+            /* Main content area */
+            section.main {
+                height: 100vh !important;
+                max-height: 100vh !important;
+                overflow: hidden !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: center !important;
+                align-items: center !important;
+                padding: 0 !important;
+            }
+            
+            /* Content wrapper untuk memastikan semua konten terlihat */
+            .auth-content-wrapper {
+                width: 100%;
+                max-width: 500px;
+                height: auto;
+                max-height: 95vh;
+                overflow-y: auto;
+                overflow-x: hidden;
+                padding: 1rem;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            /* Welcome header kompak */
+            .welcome-header {
+                text-align: center;
+                margin-bottom: 1rem;
+            }
+            
+            /* Selectbox styling */
+            .stSelectbox {
+                margin-bottom: 1rem !important;
+                width: 100%;
+            }
+            
+            /* Form styling yang lebih kompak */
+            div[data-testid="stForm"] {
+                border: 1px solid #f0f2f6;
+                padding: 1.2rem;
+                border-radius: 10px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                margin-bottom: 0.5rem;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            
+            /* Button styling */
             .stButton button {
                 width: 100%;
                 border-radius: 20px;
-                height: 3rem;
+                height: 2.8rem;
                 font-weight: bold;
+                margin: 0.3rem 0;
             }
+            
+            /* Input field spacing */
+            .stTextInput {
+                margin-bottom: 0.8rem;
+            }
+            
+            /* Column spacing yang lebih rapat */
+            .stColumns {
+                gap: 0.5rem;
+            }
+            
+            /* Success message styling */
             .success-message {
-                padding: 1rem;
+                padding: 0.8rem;
                 border-radius: 10px;
-                margin: 1rem 0;
+                margin: 0.5rem 0;
             }
-            div[data-testid="stForm"] {
-                border: 1px solid #f0f2f6;
-                padding: 1.5rem;
-                border-radius: 10px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
+            
             /* Divider custom untuk "ATAU" */
             .auth-divider-custom {
                 display: flex;
                 align-items: center;
-                margin: 1.5rem 0 1.5rem 0;
+                margin: 1rem 0;
             }
             .divider-line-custom {
                 flex: 1;
@@ -1067,8 +1140,9 @@ def main() -> None:
                 color: #888;
                 font-weight: 600;
                 letter-spacing: 1px;
-                font-size: 0.95rem;
+                font-size: 0.9rem;
             }
+            
             /* Lupa kata sandi di kanan */
             .forgot-password-right {
                 text-align: right;
@@ -1078,10 +1152,35 @@ def main() -> None:
             .forgot-password-right a {
                 color: #1976d2;
                 text-decoration: none;
-                font-size: 0.95rem;
+                font-size: 0.9rem;
             }
             .forgot-password-right a:hover {
                 text-decoration: underline;
+            }
+            
+            /* Hide scrollbar for webkit browsers */
+            .auth-content-wrapper::-webkit-scrollbar {
+                width: 4px;
+            }
+            .auth-content-wrapper::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            .auth-content-wrapper::-webkit-scrollbar-thumb {
+                background: #ccc;
+                border-radius: 2px;
+            }
+            
+            /* Responsive adjustments */
+            @media (max-height: 700px) {
+                .welcome-header {
+                    margin-bottom: 0.5rem;
+                }
+                div[data-testid="stForm"] {
+                    padding: 1rem;
+                }
+                .stButton button {
+                    height: 2.5rem;
+                }
             }
             </style>
         """, unsafe_allow_html=True)
@@ -1112,6 +1211,8 @@ def main() -> None:
 
         # Display welcome message with enhanced styling
         with st.container():
+            st.markdown('<div class="auth-content-wrapper">', unsafe_allow_html=True)
+            
             # Load the logo image
             try:
                 logo_path = "ui/icon/logo_app.png"
@@ -1119,14 +1220,14 @@ def main() -> None:
                     img_base64 = base64.b64encode(img_file.read()).decode()
                 st.markdown(f"""
                     <div class="welcome-header">
-                    <img src="data:image/png;base64,{img_base64}" alt="Logo" style="width:120px; display:block; margin:0 auto 2px auto;">
-                    <div style="text-align:center; font-size:2rem; font-weight:bold; margin-bottom:1.2rem;">Selamat Datang!</div>
+                    <img src="data:image/png;base64,{img_base64}" alt="Logo" style="width:170px; display:block; margin:0 auto 1rem auto;">
+                    <div style="text-align:center; font-size:1.8rem; font-weight:bold; margin-bottom:1rem;">Selamat Datang!</div>
                     </div>
                 """, unsafe_allow_html=True)
             except FileNotFoundError:
                 st.markdown("""
                     <div class="welcome-header">
-                    <div style='text-align:center; font-size:2rem; font-weight:bold; margin-bottom:1.2rem;'>Selamat Datang!</div>
+                    <div style='text-align:center; font-size:1.8rem; font-weight:bold; margin-bottom:1rem;'>Selamat Datang!</div>
                     </div>
                 """, unsafe_allow_html=True)
 
@@ -1160,6 +1261,8 @@ def main() -> None:
                     display_register_form(firebase_auth, firestore_client)
                 elif auth_type == "🔑 Reset Password":
                     display_reset_password_form(firebase_auth)
+            
+            st.markdown('</div>', unsafe_allow_html=True)  # Close auth-content-wrapper
 
     except Exception as e:
         logger.critical(f"Application crashed: {str(e)}", exc_info=True)
