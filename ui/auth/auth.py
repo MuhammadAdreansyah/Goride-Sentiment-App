@@ -1,41 +1,37 @@
 """
-Streamlit Authentication System with Firebase Integration (Improved Version)
+Sistem Autentikasi Streamlit dengan Integrasi Firebase (Versi Diperbaiki)
 
-This application provides:
-- Email/password authentication
-- Google OAuth login
-- User registration
-- Password reset functionality
-- Session management
+Aplikasi ini menyediakan:
+- Autentikasi email/kata sandi
+- Login OAuth Google
+- Registrasi pengguna
+- Fungsionalitas reset kata sandi
+- Manajemen sesi
 """
 
-import warnings
-# Suppress the pkg_resources deprecation warning from gcloud/pyrebase
-warnings.filterwarnings('ignore', message='pkg_resources is deprecated as an API')
-
 import streamlit as st
-import firebase_admin
-from firebase_admin import credentials, auth, firestore
-import pyrebase
-import json
-import os
+import re
+import uuid
 import asyncio
 import httpx
-import logging
 import time
 import base64
-import re
+import warnings
+import logging
+import firebase_admin
+import pyrebase
+from firebase_admin import credentials, auth, firestore
 from datetime import datetime, timedelta
 from typing import Optional, Tuple, Dict, Union, Any
 from urllib.parse import urlencode
-import uuid
+
 from streamlit_cookies_controller import CookieController
 
 # =============================================
-# INITIAL SETUP AND CONFIGURATION
+# SETUP DAN KONFIGURASI AWAL
 # =============================================
 
-# Initialize logging configuration
+# Inisialisasi konfigurasi logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -47,7 +43,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class Config:
-    """Configuration class for storing environment variables and constants"""
+    """Kelas konfigurasi untuk menyimpan variabel lingkungan dan konstanta"""
     GOOGLE_CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
     GOOGLE_CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
     REDIRECT_URI = st.secrets["REDIRECT_URI"]
@@ -60,11 +56,11 @@ class Config:
 cookie_controller = CookieController()
 
 # =============================================
-# SESSION MANAGEMENT
+# MANAGEMEN SESI
 # =============================================
 
 def initialize_session_state():
-    """Ensure all required session state variables are initialized"""
+    """Pastikan semua variabel state sesi yang diperlukan diinisialisasi"""
     required_keys = {
         'logged_in': False,
         'login_attempts': 0,
@@ -78,7 +74,7 @@ def initialize_session_state():
             st.session_state[key] = default_value
 
 def verify_environment():
-    """Check all required environment variables are set"""
+    """Periksa semua variabel lingkungan yang diperlukan telah diset"""
     required_vars = [
         'GOOGLE_CLIENT_ID',
         'GOOGLE_CLIENT_SECRET',
@@ -112,48 +108,48 @@ def sync_login_state():
         st.session_state['logged_in'] = False
 
 def set_remember_me_cookies(email: str, remember: bool = False) -> None:
-    """Set cookies for remember me functionality"""
+    """Set cookies untuk fungsionalitas ingat saya"""
     if remember:
-        # Set cookies with longer expiration (30 days)
+        # Set cookies dengan masa berlaku lebih lama (30 hari)
         cookie_controller.set('is_logged_in', 'True', max_age=30*24*60*60)
         cookie_controller.set('user_email', email, max_age=30*24*60*60)
         cookie_controller.set('remember_me', 'True', max_age=30*24*60*60)
-        cookie_controller.set('last_email', email, max_age=90*24*60*60)  # Remember email for 90 days
+        cookie_controller.set('last_email', email, max_age=90*24*60*60)  # Ingat email selama 90 hari
     else:
-        # Set session cookies (expire when browser closes)
+        # Set session cookies (berakhir saat browser ditutup)
         cookie_controller.set('is_logged_in', 'True')
         cookie_controller.set('user_email', email)
         cookie_controller.set('remember_me', 'False')
 
 def get_remembered_email() -> str:
-    """Get last remembered email for convenience"""
+    """Dapatkan email terakhir yang diingat untuk kenyamanan"""
     return cookie_controller.get('last_email') or ""
 
 def clear_remember_me_cookies() -> None:
-    """Clear all remember me related cookies"""
+    """Bersihkan semua cookies terkait ingat saya"""
     cookie_controller.remove('is_logged_in')
     cookie_controller.remove('user_email')
     cookie_controller.remove('remember_me')
-    # Keep last_email for convenience unless explicitly cleared
+    # Pertahankan last_email untuk kenyamanan kecuali secara eksplisit dibersihkan
 
 # =============================================
-# EMAIL VERIFICATION UTILITIES
+# UTILITAS VERIFIKASI EMAIL
 # =============================================
 
 def check_email_verification_quota() -> Tuple[bool, str]:
-    """Check if email verification is likely to succeed based on recent attempts"""
+    """Periksa apakah verifikasi email mungkin berhasil berdasarkan upaya terbaru"""
     now = datetime.now()
     quota_key = 'email_verification_attempts'
     attempts = st.session_state.get(quota_key, [])
     
-    # Remove attempts older than 1 hour
+    # Hapus upaya yang lebih tua dari 1 jam
     valid_attempts = [
         attempt for attempt in attempts 
         if (now - attempt) < timedelta(hours=1)
     ]
     
-    # Firebase has a limit of ~100 email actions per hour for free tier
-    if len(valid_attempts) >= 50:  # Conservative limit
+    # Firebase memiliki batas ~100 tindakan email per jam untuk tingkat gratis
+    if len(valid_attempts) >= 50:  # Batas konservatif
         return False, "Batas pengiriman email tercapai untuk jam ini. Silakan coba lagi nanti."
     
     valid_attempts.append(now)
@@ -161,14 +157,14 @@ def check_email_verification_quota() -> Tuple[bool, str]:
     return True, ""
 
 def send_email_verification_safe(firebase_auth: Any, id_token: str, email: str) -> Tuple[bool, str]:
-    """Safely send email verification with comprehensive error handling"""
+    """Kirim verifikasi email dengan aman dengan penanganan error yang komprehensif"""
     try:
-        # Check quota first
+        # Periksa kuota terlebih dahulu
         can_send, quota_message = check_email_verification_quota()
         if not can_send:
             return False, quota_message
         
-        # Attempt to send verification
+        # Coba kirim verifikasi
         firebase_auth.send_email_verification(id_token)
         logger.info(f"Email verification sent successfully to: {email}")
         return True, "Email verifikasi berhasil dikirim"
@@ -177,7 +173,7 @@ def send_email_verification_safe(firebase_auth: Any, id_token: str, email: str) 
         error_str = str(e).upper()
         logger.error(f"Failed to send email verification to {email}: {str(e)}")
         
-        # Handle specific Firebase errors
+        # Tangani error Firebase yang spesifik
         if "QUOTA_EXCEEDED" in error_str or "TOO_MANY_REQUESTS" in error_str:
             return False, "Batas pengiriman email Firebase tercapai. Silakan coba lagi dalam beberapa jam."
         elif "INVALID_ID_TOKEN" in error_str:
@@ -192,40 +188,40 @@ def send_email_verification_safe(firebase_auth: Any, id_token: str, email: str) 
             return False, f"Gagal mengirim email verifikasi: {str(e)}"
 
 # =============================================
-# ENHANCED VALIDATION SYSTEM
+# SISTEM VALIDASI YANG DITINGKATKAN
 # =============================================
 
 def validate_email_format(email: str) -> Tuple[bool, str]:
-    """Validate email format with comprehensive rules"""
+    """Validasi format email dengan aturan yang komprehensif"""
     if not email:
         return False, "Email tidak boleh kosong"
     
-    # Basic email pattern
+    # Pola email dasar
     email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     
     if not re.match(email_pattern, email):
         return False, "Format email tidak valid. Contoh: nama@domain.com"
     
-    # Additional checks
-    if len(email) > 254:  # RFC 5321 limit
+    # Pemeriksaan tambahan
+    if len(email) > 254:  # Batas RFC 5321
         return False, "Email terlalu panjang (maksimal 254 karakter)"
     
     local_part, domain = email.rsplit('@', 1)
-    if len(local_part) > 64:  # RFC 5321 limit
+    if len(local_part) > 64:  # Batas RFC 5321
         return False, "Bagian lokal email terlalu panjang"
     
-    # Check for consecutive dots
+    # Periksa titik berturut-turut
     if '..' in email:
         return False, "Email tidak boleh mengandung titik berturut-turut"
     
-    # Check if starts or ends with dot
+    # Periksa jika diawali atau diakhiri dengan titik
     if local_part.startswith('.') or local_part.endswith('.'):
         return False, "Email tidak boleh dimulai atau diakhiri dengan titik"
     
     return True, ""
 
 def validate_name_format(name: str, field_name: str) -> Tuple[bool, str]:
-    """Validate name format"""
+    """Validasi format nama"""
     if not name:
         return False, f"{field_name} tidak boleh kosong"
     
@@ -235,7 +231,7 @@ def validate_name_format(name: str, field_name: str) -> Tuple[bool, str]:
     if len(name) > 50:
         return False, f"{field_name} maksimal 50 karakter"
     
-    # Allow letters, spaces, and common name characters
+    # Izinkan huruf, spasi, dan karakter nama umum
     name_pattern = r'^[a-zA-Z\s\'-]+$'
     if not re.match(name_pattern, name):
         return False, f"{field_name} hanya boleh mengandung huruf, spasi, apostrof, dan tanda hubung"
@@ -243,18 +239,18 @@ def validate_name_format(name: str, field_name: str) -> Tuple[bool, str]:
     return True, ""
 
 def show_validation_feedback(is_valid: bool, message: str, field_name: str) -> None:
-    """Show real-time validation feedback"""
+    """Tampilkan umpan balik validasi secara real-time"""
     if not is_valid and message:
         st.error(f"❌ {message}")
     elif is_valid and message != "":
         st.success(f"✅ {field_name} valid")
 
 # =============================================
-# SECURITY UTILITIES
+# UTILITAS KEAMANAN
 # =============================================
 
 def validate_password(password: str) -> Tuple[bool, str]:
-    """Validate password strength requirements"""
+    """Validasi persyaratan kekuatan kata sandi"""
     if len(password) < 8:
         return False, "Kata sandi harus minimal 8 karakter"
     if not any(c.isupper() for c in password):
@@ -266,12 +262,12 @@ def validate_password(password: str) -> Tuple[bool, str]:
     return True, ""
 
 def check_rate_limit(user_email: str) -> bool:
-    """Check if user has exceeded rate limit for login attempts"""
+    """Periksa apakah pengguna telah melebihi batas laju untuk percobaan login"""
     now = datetime.now()
     rate_limit_key = f'ratelimit_{user_email}'
     attempts = st.session_state.get(rate_limit_key, [])
 
-    # Remove attempts outside the window
+    # Hapus percobaan di luar jendela
     valid_attempts = [
         attempt for attempt in attempts 
         if (now - attempt) < timedelta(seconds=Config.RATE_LIMIT_WINDOW)
@@ -285,7 +281,7 @@ def check_rate_limit(user_email: str) -> bool:
     return True
 
 def check_session_timeout() -> bool:
-    """Check if user session has timed out"""
+    """Periksa apakah sesi pengguna telah kedaluwarsa"""
     if 'login_time' in st.session_state:
         elapsed = (datetime.now() - st.session_state['login_time']).total_seconds()
         if elapsed > Config.SESSION_TIMEOUT:
@@ -295,13 +291,13 @@ def check_session_timeout() -> bool:
     return True
 
 # =============================================
-# FIREBASE INITIALIZATION
+# INISIALISASI FIREBASE
 # =============================================
 
 def initialize_firebase() -> Tuple[Optional[Any], Optional[Any]]:
     """
-    Initialize Firebase Admin SDK and Pyrebase with better error handling
-    and retry logic. Ambil semua konfigurasi dari st.secrets.
+    Inisialisasi Firebase Admin SDK dan Pyrebase dengan penanganan error yang lebih baik
+    dan logika percobaan ulang. Ambil semua konfigurasi dari st.secrets.
     """
     max_retries = 3
     retry_delay = 1
@@ -342,12 +338,12 @@ def initialize_firebase() -> Tuple[Optional[Any], Optional[Any]]:
     return None, None
 
 # =============================================
-# GOOGLE OAUTH INTEGRATION
+# INTEGRASI GOOGLE OAUTH
 # =============================================
 
 async def exchange_google_token(code: str) -> Tuple[Optional[str], Optional[Dict]]:
     """
-    Exchange Google authorization code for user info
+    Tukar kode otorisasi Google untuk informasi pengguna
     """
     async with httpx.AsyncClient() as client:
         token_url = 'https://oauth2.googleapis.com/token'
@@ -360,12 +356,12 @@ async def exchange_google_token(code: str) -> Tuple[Optional[str], Optional[Dict
         }
 
         try:
-            # Exchange code for tokens
+            # Tukar kode untuk mendapatkan token
             response = await client.post(token_url, data=payload)
             response.raise_for_status()
             token_data = response.json()
 
-            # Get user info using access token
+            # Dapatkan informasi pengguna menggunakan access token
             user_info_response = await client.get(
                 'https://www.googleapis.com/oauth2/v3/userinfo',
                 headers={'Authorization': f'Bearer {token_data["access_token"]}'}
@@ -382,8 +378,8 @@ async def exchange_google_token(code: str) -> Tuple[Optional[str], Optional[Dict
 
 def handle_google_login_callback() -> bool:
     """
-    Handle Google OAuth callback after user authentication
-    Returns True if successful, False otherwise
+    Tangani callback Google OAuth setelah autentikasi pengguna
+    Mengembalikan True jika berhasil, False jika tidak
     """
     try:
         if 'code' not in st.query_params:
@@ -391,7 +387,7 @@ def handle_google_login_callback() -> bool:
             
         code = st.query_params.get('code')
         if not code or not isinstance(code, str):
-            logger.warning("Invalid authorization code received")
+            logger.warning("Kode otorisasi yang diterima tidak valid")
             return False
 
         async def async_token_exchange():
@@ -406,26 +402,26 @@ def handle_google_login_callback() -> bool:
             return False
 
         try:
-            # Check if user exists in Firebase
+            # Periksa apakah pengguna ada di Firebase
             try:
                 firebase_user = auth.get_user_by_email(user_email)
                 firestore_client = st.session_state.get('firestore')
                 
                 if not firestore_client:
-                    logger.error("Firestore client not available")
+                    logger.error("Klien Firestore tidak tersedia")
                     st.error("Kesalahan autentikasi: Masalah koneksi database")
                     return False
 
                 user_doc = firestore_client.collection('users').document(firebase_user.uid).get()
                 if not user_doc.exists:
-                    logger.warning(f"Google OAuth: User exists in Auth but not in Firestore: {user_email}")
+                    logger.warning(f"Google OAuth: Pengguna ada di Auth tetapi tidak di Firestore: {user_email}")
                     st.session_state['google_auth_error'] = True
                     st.session_state['google_auth_email'] = user_email
                     if 'logged_in' in st.session_state:
                         del st.session_state['logged_in']
                     st.query_params.clear()
                     st.rerun()
-                    return False                # Successful login
+                    return False                # Login berhasil
                 st.session_state.update({
                     'user_email': user_email,
                     'user_info': user_info,
@@ -435,20 +431,20 @@ def handle_google_login_callback() -> bool:
                     },
                     'logged_in': True,
                     'login_time': datetime.now(),
-                    'login_success': True,  # New flag for clean state management
-                    'pending_config_change': True  # Flag to indicate we need to update layout
+                    'login_success': True,  # Flag baru untuk manajemen status yang bersih
+                    'pending_config_change': True  # Flag untuk menunjukkan bahwa kita perlu memperbarui tata letak
                 })
                 
-                # Clear any logout or force_auth flags that might interfere
+                # Hapus semua flag logout atau force_auth yang mungkin mengganggu
                 for key in ['force_auth_page', 'logout_success']:
                     if key in st.session_state:
                         del st.session_state[key]
                     
-                logger.info(f"Successfully logged in user: {user_email}")
-                # Set remember me cookies (Google login = auto remember)
+                logger.info(f"Berhasil masuk sebagai pengguna: {user_email}")
+                # Set cookies ingat saya (login Google = otomatis ingat)
                 set_remember_me_cookies(user_email, True)
                 
-                # Show success toast
+                # Tampilkan toast sukses
                 username = user_email.split('@')[0].capitalize()
                 show_success_toast(f"Login Google berhasil! Selamat datang, {username}!")
                 
@@ -456,7 +452,7 @@ def handle_google_login_callback() -> bool:
                 return True
 
             except auth.UserNotFoundError:
-                logger.warning(f"Google OAuth: User not registered in system: {user_email}")
+                logger.warning(f"Google OAuth: Pengguna tidak terdaftar dalam sistem: {user_email}")
                 st.session_state['google_auth_error'] = True
                 st.session_state['google_auth_email'] = user_email
                 if 'logged_in' in st.session_state:
@@ -480,7 +476,7 @@ def handle_google_login_callback() -> bool:
 
 def verify_user_exists(user_email: str, firestore_client: Any) -> bool:
     """
-    Verify that the user exists and has valid data in Firestore
+    Verifikasi bahwa pengguna ada dan memiliki data yang valid di Firestore
     """
     try:
         firebase_user = auth.get_user_by_email(user_email)
@@ -502,7 +498,7 @@ def verify_user_exists(user_email: str, firestore_client: Any) -> bool:
         return False
 
 def get_google_authorization_url() -> str:
-    """Generate Google OAuth authorization URL with required scopes"""
+    """Hasilkan URL otorisasi Google OAuth dengan cakupan yang diperlukan"""
     base_url = 'https://accounts.google.com/o/oauth2/v2/auth'
     params = {
         'client_id': Config.GOOGLE_CLIENT_ID,
@@ -515,11 +511,11 @@ def get_google_authorization_url() -> str:
     return f"{base_url}?{urlencode(params)}"
 
 # =============================================
-# AUTHENTICATION FUNCTIONS
+# FUNGSI AUTENTIKASI
 # =============================================
 
 def logout() -> None:
-    """Handle user logout with session cleanup and proper cookie management"""
+    """Tangani logout pengguna dengan pembersihan sesi dan manajemen cookie yang tepat"""
     try:
         user_email = st.session_state.get('user_email')
         logger.info(f"Logging out user: {user_email}")
@@ -557,35 +553,35 @@ def logout() -> None:
         show_error_toast(f"Logout failed: {str(e)}")
 
 # =============================================
-# UI FEEDBACK SYSTEM
+# SISTEM UMPAN BALIK UI
 # =============================================
 
 def show_toast_notification(message: str, icon: str = "ℹ️") -> None:
-    """Display toast notification with consistent styling"""
+    """Tampilkan notifikasi toast dengan gaya yang konsisten"""
     st.toast(message, icon=icon)
 
 def show_success_toast(message: str) -> None:
-    """Display success toast notification"""
+    """Tampilkan notifikasi toast sukses"""
     show_toast_notification(message, "✅")
 
 def show_error_toast(message: str) -> None:
-    """Display error toast notification"""
+    """Tampilkan notifikasi toast error"""
     show_toast_notification(message, "❌")
 
 def show_warning_toast(message: str) -> None:
-    """Display warning toast notification"""
+    """Tampilkan notifikasi toast peringatan"""
     show_toast_notification(message, "⚠️")
 
 def show_info_toast(message: str) -> None:
-    """Display info toast notification"""
+    """Tampilkan notifikasi toast info"""
     show_toast_notification(message, "ℹ️")
 
 # =============================================
-# UI COMPONENTS
+# KOMPONEN UI
 # =============================================
 
 def display_login_form(firebase_auth: Any) -> None:
-    """Display and handle login form with email verification check and enhanced validation"""
+    """Tampilkan dan tangani formulir login dengan pemeriksaan verifikasi email dan validasi yang ditingkatkan"""
     if st.session_state.get('google_auth_error', False):
         email = st.session_state.get('google_auth_email', '')
         show_error_toast(f"Akun Google {email} tidak terdaftar dalam sistem kami. Silakan daftar terlebih dahulu.")
@@ -594,9 +590,9 @@ def display_login_form(firebase_auth: Any) -> None:
             del st.session_state['google_auth_email']
 
     with st.form("login_form", clear_on_submit=False):
-        st.markdown("### Sign In")
+        st.markdown("### Masuk")
 
-        # Get remembered email for convenience
+        # Dapatkan email yang diingat untuk kenyamanan
         remembered_email = get_remembered_email()
         
         email = st.text_input(
@@ -606,14 +602,14 @@ def display_login_form(firebase_auth: Any) -> None:
             help="Masukkan alamat email terdaftar Anda"
         )
 
-        # Real-time email validation
+        # Validasi email secara real-time
         if email and email != remembered_email:
             is_valid_email, email_message = validate_email_format(email)
             if not is_valid_email:
                 st.error(f"❌ {email_message}")
 
         password = st.text_input(
-            "Password",
+            "Kata Sandi",
             type="password",
             placeholder="Masukkan kata sandi Anda",
             help="Masukkan kata sandi yang aman"
@@ -621,7 +617,7 @@ def display_login_form(firebase_auth: Any) -> None:
 
         col1, col2 = st.columns([1, 2])
         with col1:
-            remember = st.checkbox("Remember me", value=True, help="Simpan login selama 30 hari")
+            remember = st.checkbox("Ingat saya", value=True, help="Simpan login selama 30 hari")
         # with col2:
         #     st.markdown(
         #         """
@@ -632,7 +628,7 @@ def display_login_form(firebase_auth: Any) -> None:
 
         if st.form_submit_button("Lanjutkan dengan Email", use_container_width=True, type="primary"):
             if email and password:
-                # Validate email format before attempting login
+                # Validasi format email sebelum mencoba login
                 is_valid_email, email_message = validate_email_format(email)
                 if not is_valid_email:
                     show_error_toast(email_message)
@@ -646,7 +642,7 @@ def display_login_form(firebase_auth: Any) -> None:
                         email_verified = account_info['users'][0]['emailVerified']
 
                         if not email_verified:
-                            # Try to send email verification with better error handling
+                            # Coba kirim verifikasi email dengan penanganan error yang lebih baik
                             try:
                                 firebase_auth.send_email_verification(user['idToken'])
                                 show_warning_toast("Email belum diverifikasi! Link verifikasi telah dikirim ulang.")
@@ -661,34 +657,34 @@ def display_login_form(firebase_auth: Any) -> None:
                             logger.warning(f"Unverified email login attempt: {email}")
                             return
                         
-                        # Update session state for successful login
+                        # Perbarui state sesi untuk login yang berhasil
                         st.session_state.update({
                             'user': user,
                             'user_email': email,
                             'logged_in': True,
                             'login_time': datetime.now(),
-                            'login_success': True,  # New flag to trigger clean state transitions
-                            'pending_config_change': True  # Flag to indicate we need to update layout
+                            'login_success': True,  # Flag baru untuk memicu transisi status yang bersih
+                            'pending_config_change': True  # Flag untuk menunjukkan bahwa kita perlu memperbarui tata letak
                         })
                         
-                        # Set remember me cookies
+                        # Set cookies ingat saya
                         set_remember_me_cookies(email, remember)
                         
-                        # Clear any logout or force_auth flags that might interfere
+                        # Hapus semua flag logout atau force_auth yang mungkin mengganggu
                         for key in ['force_auth_page', 'logout_success']:
                             if key in st.session_state:
                                 del st.session_state[key]
 
-                        # Show success toast
+                        # Tampilkan toast sukses
                         username = email.split('@')[0].capitalize()
                         show_success_toast(f"Selamat datang kembali, {username}!")
                         
                         logger.info(f"Successful login for verified user: {email}")
-                        # Return to main app which will handle navigation
+                        # Kembali ke aplikasi utama yang akan menangani navigasi
                         st.rerun()
 
                 except Exception as e:
-                    # Only check and increment rate limit if login failed
+                    # Hanya periksa dan tingkatkan batas laju jika login gagal
                     if not check_rate_limit(email):
                         show_error_toast("Terlalu banyak percobaan login. Silakan coba lagi nanti.")
                         return
@@ -728,10 +724,10 @@ def display_login_form(firebase_auth: Any) -> None:
                     show_error_toast("Gagal terhubung ke Google. Silakan coba lagi nanti.")
 
 def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
-    """Display and handle user registration form with enhanced validation"""
+    """Tampilkan dan tangani formulir registrasi pengguna dengan validasi yang ditingkatkan"""
     google_email = st.session_state.get('google_auth_email', '')
     
-    # Initialize form data in session state to preserve values on error
+    # Inisialisasi data formulir di state sesi untuk mempertahankan nilai saat terjadi kesalahan
     if 'register_form_data' not in st.session_state:
         st.session_state['register_form_data'] = {
             'first_name': '',
@@ -740,35 +736,35 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
             'terms_accepted': False
         }
     
-    # Update email if google_email is set
+    # Perbarui email jika google_email diset
     if google_email and st.session_state['register_form_data']['email'] != google_email:
         st.session_state['register_form_data']['email'] = google_email
 
     with st.form("register_form", clear_on_submit=False):
-        st.markdown("### Sign Up")
+        st.markdown("### Daftar")
 
         col1, col2 = st.columns(2)
         with col1:
             first_name = st.text_input(
-                "Username", 
+                "Nama Depan", 
                 value=st.session_state['register_form_data']['first_name'],
                 placeholder="John"
             )
-            # Real-time validation for first name
+            # Validasi real-time untuk nama depan
             if first_name and first_name.strip():
-                is_valid_fname, fname_message = validate_name_format(first_name.strip(), "Username")
+                is_valid_fname, fname_message = validate_name_format(first_name.strip(), "Nama Depan")
                 if not is_valid_fname:
                     st.error(f"❌ {fname_message}")
                     
         with col2:
             last_name = st.text_input(
-                "Lastname", 
+                "Nama Belakang", 
                 value=st.session_state['register_form_data']['last_name'],
                 placeholder="Doe"
             )
-            # Real-time validation for last name
+            # Validasi real-time untuk nama belakang
             if last_name and last_name.strip():
-                is_valid_lname, lname_message = validate_name_format(last_name.strip(), "Lastname")
+                is_valid_lname, lname_message = validate_name_format(last_name.strip(), "Nama Belakang")
                 if not is_valid_lname:
                     st.error(f"❌ {lname_message}")
 
@@ -779,7 +775,7 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
             help="Kami akan mengirimkan link verifikasi ke email ini"
         )
         
-        # # Real-time email validation
+        # # Validasi email real-time
         # if email and email.strip() and not google_email:
         #     is_valid_email, email_message = validate_email_format(email.strip())
         #     if not is_valid_email:
@@ -791,12 +787,12 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
             col3, col4 = st.columns(2)
             with col3:
                 password = st.text_input(
-                    "Password",
+                    "Kata Sandi",
                     type="password",
                     placeholder="Buat kata sandi yang kuat",
                     help="Gunakan 8+ karakter dengan campuran huruf, angka & simbol"
                 )
-                # # Real-time password validation
+                # # Validasi kata sandi real-time
                 # if password:
                 #     is_valid_pass, pass_message = validate_password(password)
                 #     if not is_valid_pass:
@@ -806,11 +802,11 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
                         
             with col4:
                 confirm_password = st.text_input(
-                    "Confirm Password",
+                    "Konfirmasi Kata Sandi",
                     type="password",
                     placeholder="Masukkan ulang kata sandi"
                 )
-                # # Password confirmation validation
+                # # Validasi konfirmasi kata sandi
                 # if confirm_password and password:
                 #     if password != confirm_password:
                 #         st.error("❌ Kata sandi tidak cocok")
@@ -833,7 +829,7 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
         button_text = "Daftar dengan Google" if google_email else "Buat Akun"
 
         if st.form_submit_button(button_text, use_container_width=True, type="primary"):
-            # Update session state with current form values
+            # Perbarui state sesi dengan nilai formulir saat ini
             st.session_state['register_form_data'].update({
                 'first_name': first_name,
                 'last_name': last_name,
@@ -841,7 +837,7 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
                 'terms_accepted': terms
             })
             
-            # Comprehensive validation
+            # Validasi komprehensif
             validation_errors = []
             
             if not terms:
@@ -850,18 +846,18 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
             if not all([first_name, last_name, email, password]):
                 validation_errors.append("Silakan isi semua kolom yang diperlukan.")
             
-            # Validate names
+            # Validasi nama
             if first_name and first_name.strip():
-                is_valid_fname, fname_message = validate_name_format(first_name.strip(), "Username")
+                is_valid_fname, fname_message = validate_name_format(first_name.strip(), "Nama Depan")
                 if not is_valid_fname:
                     validation_errors.append(fname_message)
                 
             if last_name and last_name.strip():
-                is_valid_lname, lname_message = validate_name_format(last_name.strip(), "Lastname")
+                is_valid_lname, lname_message = validate_name_format(last_name.strip(), "Nama Belakang")
                 if not is_valid_lname:
                     validation_errors.append(lname_message)
             
-            # Validate email
+            # Validasi email
             if not google_email and email and email.strip():
                 is_valid_email, email_message = validate_email_format(email.strip())
                 if not is_valid_email:
@@ -875,7 +871,7 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
                 if not is_valid_password:
                     validation_errors.append(password_error)
             
-            # Show all validation errors
+            # Tampilkan semua kesalahan validasi
             if validation_errors:
                 for error in validation_errors:
                     show_error_toast(error)
@@ -899,12 +895,12 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
                         )
                         user = {'localId': user_record.uid}
                         registration_success = True
-                        email_verification_sent = False  # Google users don't need verification
+                        email_verification_sent = False  # Pengguna Google tidak perlu verifikasi
                     else:
                         user = firebase_auth.create_user_with_email_and_password(email, password)
                         registration_success = True
                         
-                        # Use safe email verification function
+                        # Gunakan fungsi verifikasi email yang aman
                         email_verification_sent, verification_message = send_email_verification_safe(
                             firebase_auth, user['idToken'], email.strip() if email else ""
                         )
@@ -927,11 +923,11 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
                     firestore_client.collection('users').document(user['localId']).set(user_data)
                     logger.info(f"Successfully created account for: {email}")
 
-                    # Clear form data on successful registration
+                    # Hapus data formulir setelah registrasi berhasil
                     if 'register_form_data' in st.session_state:
                         del st.session_state['register_form_data']
 
-                    # Show appropriate success message based on verification status
+                    # Tampilkan pesan sukses yang sesuai berdasarkan status verifikasi
                     if google_email:
                         show_success_toast("Akun Google berhasil didaftarkan! Anda sekarang dapat login.")
                         if 'google_auth_email' in st.session_state:
@@ -944,7 +940,7 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
                             show_success_toast("Akun berhasil dibuat! Email verifikasi mungkin tertunda.")
                             st.warning("⚠️ Akun berhasil dibuat, namun email verifikasi belum terkirim. Anda dapat meminta pengiriman ulang saat login.")
 
-                    # Store verification status for potential resend feature
+                    # Simpan status verifikasi untuk fitur pengiriman ulang
                     st.session_state['last_registration_email'] = email
                     st.session_state['email_verification_sent'] = email_verification_sent
 
@@ -958,9 +954,9 @@ def display_register_form(firebase_auth: Any, firestore_client: Any) -> None:
                     show_error_toast(f"Pendaftaran gagal: {str(e)}")
 
 def display_reset_password_form(firebase_auth: Any) -> None:
-    """Display and handle password reset form with enhanced feedback"""
+    """Tampilkan dan tangani formulir reset kata sandi dengan umpan balik yang ditingkatkan"""
     with st.form("reset_form", clear_on_submit=True):
-        st.markdown("### Reset Password")
+        st.markdown("### Reset Kata Sandi")
         st.info("Masukkan alamat email Anda di bawah ini dan kami akan mengirimkan petunjuk untuk mereset kata sandi Anda.")
 
         email = st.text_input(
@@ -969,7 +965,7 @@ def display_reset_password_form(firebase_auth: Any) -> None:
             help="Masukkan alamat email yang terkait dengan akun Anda"
         )
 
-        # Real-time email validation
+        # Validasi email real-time
         if email and email.strip():
             is_valid_email, email_message = validate_email_format(email.strip())
             if not is_valid_email:
@@ -980,7 +976,7 @@ def display_reset_password_form(firebase_auth: Any) -> None:
                 show_warning_toast("Silakan masukkan alamat email Anda.")
                 return
 
-            # Validate email format
+            # Validasi format email
             is_valid_email, email_message = validate_email_format(email.strip())
             if not is_valid_email:
                 show_error_toast(email_message)
@@ -1014,21 +1010,61 @@ def display_reset_password_form(firebase_auth: Any) -> None:
                 show_error_toast("Gagal mengirim link reset. Silakan coba lagi nanti.")
 
 # =============================================
-# MAIN APPLICATION
+# FUNGSI TAMBAHAN UNTUK CLEAN CODE
 # =============================================
 
-def main() -> None:
-    """Main application entry point with better error handling"""
+def tampilkan_header_sambutan():
+    """Menampilkan header sambutan dan logo aplikasi."""
+    st.markdown('<div class="auth-content-wrapper">', unsafe_allow_html=True)
     try:
-        # Sinkronisasi status login dari cookie ke session_state
+        logo_path = "ui/icon/logo_app.png"
+        with open(logo_path, "rb") as img_file:
+            img_base64 = base64.b64encode(img_file.read()).decode()
+        st.markdown(f"""
+            <div class="welcome-header">
+            <img src="data:image/png;base64,{img_base64}" alt="Logo" style="width:170px; display:block; margin:0 auto 1rem auto;">
+            <div style="text-align:center; font-size:1.8rem; font-weight:bold; margin-bottom:1rem;">Selamat Datang!</div>
+            </div>
+        """, unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.markdown("""
+            <div class="welcome-header">
+            <div style='text-align:center; font-size:1.8rem; font-weight:bold; margin-bottom:1rem;'>Selamat Datang!</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+def tampilkan_pilihan_autentikasi(firebase_auth, firestore_client):
+    """Menampilkan selectbox pilihan metode autentikasi dan memanggil form sesuai pilihan."""
+    previous_auth_type = st.session_state.get('auth_type', '')
+    auth_type = st.selectbox(
+        "Pilih metode autentikasi",
+        ["🔒 Masuk", "📝 Daftar", "🔑 Reset Kata Sandi"],
+        index=0,
+        help="Pilih metode autentikasi Anda",
+        label_visibility="collapsed"
+    )
+    if previous_auth_type != auth_type:
+        st.session_state['auth_type'] = auth_type
+        st.session_state['auth_type_changed'] = True
+        if 'register_form_data' in st.session_state:
+            del st.session_state['register_form_data']
+    with st.container():
+        if auth_type == "🔒 Masuk":
+            display_login_form(firebase_auth)
+        elif auth_type == "📝 Daftar":
+            display_register_form(firebase_auth, firestore_client)
+        elif auth_type == "🔑 Reset Kata Sandi":
+            display_reset_password_form(firebase_auth)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# =============================================
+# MAIN APPLICATION (DIREFAKTOR)
+# =============================================
+def main() -> None:
+    """Titik masuk utama aplikasi dengan penanganan error yang lebih baik dan kode lebih bersih."""
+    try:
         sync_login_state()
-        # Initialize session state first
         initialize_session_state()
-        
-        # Note: Page configuration is now handled by main.py
-        # for better coordination between authentication and main views
-        
-        # Custom CSS styling - Fixed viewport layout without scroll
         st.markdown("""
             <style>
             /* Reset dan viewport configuration */
@@ -1184,88 +1220,33 @@ def main() -> None:
             }
             </style>
         """, unsafe_allow_html=True)
-
-        # Display loading state while initializing
         with st.spinner("Menginisialisasi aplikasi..."):
-            # Initialize Firebase services
             firebase_auth, firestore_client = initialize_firebase()
-            
         if not firebase_auth or not firestore_client:
             st.error("Gagal menginisialisasi layanan autentikasi. Silakan hubungi dukungan.")
-            logger.critical("Critical initialization failure - Firebase services not available")
-            return        # Check if user is already logged in
+            logger.critical("Kegagalan inisialisasi kritis - Layanan Firebase tidak tersedia")
+            return
         if st.session_state.get('logged_in', False) and not st.session_state.get('force_auth_page', False):
             if check_session_timeout():
                 user_email = st.session_state.get('user_email')
                 if user_email and verify_user_exists(user_email, firestore_client):
-                    # Return control to main.py which will handle navigation
                     return
                 else:
-                    # Force logout if user verification fails
-                    logger.warning(f"User {user_email} failed verification, forcing logout")
+                    logger.warning(f"Pengguna {user_email} gagal verifikasi, melakukan logout paksa")
                     st.error("Masalah autentikasi terdeteksi. Silakan login kembali.")
                     logout()
                     st.session_state['force_auth_page'] = True
                     st.rerun()
             return
-
-        # Display welcome message with enhanced styling
         with st.container():
-            st.markdown('<div class="auth-content-wrapper">', unsafe_allow_html=True)
-            
-            # Load the logo image
-            try:
-                logo_path = "ui/icon/logo_app.png"
-                with open(logo_path, "rb") as img_file:
-                    img_base64 = base64.b64encode(img_file.read()).decode()
-                st.markdown(f"""
-                    <div class="welcome-header">
-                    <img src="data:image/png;base64,{img_base64}" alt="Logo" style="width:170px; display:block; margin:0 auto 1rem auto;">
-                    <div style="text-align:center; font-size:1.8rem; font-weight:bold; margin-bottom:1rem;">Selamat Datang!</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            except FileNotFoundError:
-                st.markdown("""
-                    <div class="welcome-header">
-                    <div style='text-align:center; font-size:1.8rem; font-weight:bold; margin-bottom:1rem;'>Selamat Datang!</div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-        # Tampilkan pesan logout jika ada query param
+            tampilkan_header_sambutan()
         if st.query_params.get("logout") == "1":
             st.toast("Anda telah berhasil logout.", icon="✅")
             st.query_params.clear()
-
-        # Handle Google OAuth callback if present
         if not handle_google_login_callback():
-            previous_auth_type = st.session_state.get('auth_type', '')
-            auth_type = st.selectbox(
-                "Pilih metode autentikasi",  # label yang jelas
-                ["🔒 Sign In", "📝 Sign Up", "🔑 Reset Password"],
-                index=0,
-                help="Pilih metode autentikasi Anda",
-                label_visibility="collapsed"  # label tetap ada, tapi disembunyikan
-            )
-
-            if previous_auth_type != auth_type:
-                st.session_state['auth_type'] = auth_type
-                st.session_state['auth_type_changed'] = True
-                # Clear form data when switching between auth types
-                if 'register_form_data' in st.session_state:
-                    del st.session_state['register_form_data']
-
-            with st.container():
-                if auth_type == "🔒 Sign In":
-                    display_login_form(firebase_auth)
-                elif auth_type == "📝 Sign Up":
-                    display_register_form(firebase_auth, firestore_client)
-                elif auth_type == "🔑 Reset Password":
-                    display_reset_password_form(firebase_auth)
-            
-            st.markdown('</div>', unsafe_allow_html=True)  # Close auth-content-wrapper
-
+            tampilkan_pilihan_autentikasi(firebase_auth, firestore_client)
     except Exception as e:
-        logger.critical(f"Application crashed: {str(e)}", exc_info=True)
+        logger.critical(f"Aplikasi crash: {str(e)}", exc_info=True)
         st.error("Terjadi kesalahan yang tidak terduga. Silakan coba lagi nanti.")
         st.session_state.clear()
         initialize_session_state()
