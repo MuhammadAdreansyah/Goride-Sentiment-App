@@ -21,6 +21,10 @@ def render_sentiment_prediction():
 
     # Load data (untuk referensi, tidak untuk training ulang model)
     data = load_sample_data()
+    if data.empty:
+        st.error("❌ Data tidak tersedia untuk analisis!")
+        st.stop()
+        
     preprocessing_options = {
         'lowercase': True,
         'clean_text': True,
@@ -33,6 +37,8 @@ def render_sentiment_prediction():
         'stemming': True,
         'rejoin': True
     }
+    
+    # Model sudah disiapkan sebelumnya, langsung load (tanpa SMOTE)
     pipeline, accuracy, precision, recall, f1, confusion_mat, X_test, y_test, tfidf_vectorizer, svm_model = get_or_train_model(data, preprocessing_options, use_tanpa_smote=True)
 
     st.title("🔍 Prediksi Sentimen Teks")

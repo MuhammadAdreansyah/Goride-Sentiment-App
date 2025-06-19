@@ -540,6 +540,13 @@ def logout() -> None:
         st.session_state['logged_in'] = False
         st.session_state['user_email'] = None
         st.session_state["logout_success"] = True
+        
+        # Reset model preparation status
+        st.session_state['models_prepared'] = False
+        st.session_state['model_preparation_started'] = False
+        st.session_state['model_preparation_completed'] = False
+        st.session_state['ready_for_tools'] = False
+        
         st.query_params.clear()
         
         # Clear remember me cookies but keep last_email for convenience

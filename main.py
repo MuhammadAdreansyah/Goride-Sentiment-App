@@ -27,6 +27,7 @@ from ui.auth import auth
 from ui.tools.Dashboard_Ringkasan import render_dashboard
 from ui.tools.Analisis_Data import render_data_analysis
 from ui.tools.Prediksi_Sentimen import render_sentiment_prediction
+from ui.utils import check_and_prepare_models_with_progress
 
 # 3. Definisi fungsi untuk setiap halaman utama
 def login_page():
@@ -46,6 +47,97 @@ def login_page():
         st.markdown('<meta http-equiv="refresh" content="0;url=/" />', unsafe_allow_html=True)
         return
     auth.main()
+
+def model_preparation_page():
+    """Halaman khusus untuk persiapan model setelah login berhasil"""
+    st.markdown(
+        """
+        <style>
+        [data-testid='stSidebar'], [data-testid='collapsedControl'] {
+            display: none !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # Header halaman
+    st.markdown("# 🤖 Persiapan Model Sentiment Analysis")
+    st.markdown("---")
+    
+    # Welcome message
+    user_email = st.session_state.get('user_email', 'User')
+    st.markdown(f"### Selamat datang, **{user_email}**! 👋")
+    
+    st.info("""
+    🔧 **Sistem sedang mempersiapkan model AI untuk analisis sentimen GoRide**
+    
+    📝 Proses ini meliputi:
+    - ✅ Pemeriksaan model yang tersedia
+    - 🤖 Pelatihan model jika diperlukan  
+    - 📊 Validasi performa model
+    - 🚀 Persiapan tools analisis
+    
+    *Proses ini hanya dilakukan sekali dan membutuhkan waktu beberapa menit.*
+    """)
+    
+    # Status container
+    status_container = st.container()
+    
+    # Check if models are being prepared
+    if not st.session_state.get('model_preparation_started', False):
+        with status_container:
+            if st.button("🚀 **Mulai Persiapan Model**", type="primary", use_container_width=True):
+                st.session_state['model_preparation_started'] = True
+                st.rerun()
+    else:
+        # Model preparation in progress
+        with status_container:
+            st.markdown("### 🔄 Sedang Mempersiapkan Model...")
+            
+            try:
+                # Show preparation progress
+                models_ready = check_and_prepare_models_with_progress()
+                
+                if models_ready:
+                    st.session_state['models_prepared'] = True
+                    st.session_state['model_preparation_completed'] = True
+                    
+                    # Success message with celebration
+                    st.balloons()
+                    st.success("🎉 **Model berhasil disiapkan!**")
+                    
+                    st.markdown("---")
+                    st.markdown("### ✅ Persiapan Selesai!")
+                    
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    with col2:
+                        if st.button("🎯 **Lanjutkan ke Dashboard**", type="primary", use_container_width=True):
+                            st.session_state['ready_for_tools'] = True
+                            st.rerun()
+                            
+                    st.markdown("*Anda siap menggunakan semua fitur analisis sentimen!*")
+                else:
+                    st.error("❌ **Gagal mempersiapkan model**")
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        if st.button("🔄 Coba Lagi"):
+                            st.session_state['model_preparation_started'] = False
+                            st.rerun()
+                    with col2:
+                        if st.button("🚪 Logout"):
+                            auth.logout()
+                            
+            except Exception as e:
+                st.error(f"❌ **Error saat mempersiapkan model:** {str(e)}")
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("🔄 Coba Lagi"):
+                        st.session_state['model_preparation_started'] = False
+                        st.rerun()
+                with col2:
+                    if st.button("🚪 Logout"):
+                        auth.logout()
 
 def logout_page():
     """Fungsi logout dan redirect ke halaman utama autentikasi"""
@@ -80,19 +172,27 @@ def main():
     # Sinkronisasi status login dari cookie ke session_state (penting untuk refresh)
     auth.sync_login_state()
     auth.initialize_session_state()
+    
     # Tampilkan toast jika login sukses
     if st.session_state.get('login_success', False):
         st.toast(f"User {st.session_state.get('user_email', '')} login successfully!", icon="✅")
         st.session_state['login_success'] = False
-    # Jika sudah login, tampilkan navigasi modul utama & logout
+    
+    # Workflow berdasarkan status user
     if st.session_state.get('logged_in', False):
-        pg = st.navigation({
-            "Tools": [dash_pg, data_pg, pred_pg],
-            "Akun": [logout_pg],
-        })
-        pg.run()
+        # User sudah login, cek status model
+        if st.session_state.get('ready_for_tools', False):
+            # Model sudah siap, tampilkan tools utama
+            pg = st.navigation({
+                "Tools": [dash_pg, data_pg, pred_pg],
+                "Akun": [logout_pg],
+            })
+            pg.run()
+        else:
+            # Model belum siap, tampilkan halaman persiapan
+            model_preparation_page()
     else:
-        # Jika belum login, tampilkan halaman autentikasi
+        # User belum login, tampilkan halaman login
         login_page()
 
 # 6. Entry point aplikasi

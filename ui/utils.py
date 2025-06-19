@@ -520,30 +520,19 @@ def check_model_compatibility():
 
 def get_or_train_model(data, preprocessing_options=None, batch_size=1000, use_tanpa_smote=False):
     """
-    Enhanced model loading with automatic retraining on compatibility issues.
+    Load pre-trained models that should already be prepared via check_and_prepare_models_with_progress().
+    This function expects models to be ready and will not perform training.
     """
     from sklearn.pipeline import Pipeline
     
-    # Check model compatibility first
-    is_compatible, compatibility_msg = check_model_compatibility()
-    
-    if not is_compatible:
-        st.warning(f"⚠️ Model compatibility issue detected: {compatibility_msg}")
-        st.info("🔄 Automatically retraining models with current sklearn version...")
-        
-        # Force retrain
-        pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm = train_model(data, preprocessing_options, batch_size)
-        save_model_and_vectorizer(pipeline, tfidf)
-        return pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm
-    
-    # Try to load existing models
+    # Try to load existing models (they should already be prepared)
     if use_tanpa_smote:
         svm_model, tfidf_vectorizer = load_saved_model_tanpa_smote()
     else:
         svm_model, tfidf_vectorizer = load_saved_model()
         
     if svm_model is not None and tfidf_vectorizer is not None:
-        # Model sudah ada, tidak perlu training ulang
+        # Model sudah ada dan siap digunakan
         tfidf = tfidf_vectorizer
         svm = svm_model
         processed_texts = data['review_text'].astype(str).tolist()
@@ -565,11 +554,10 @@ def get_or_train_model(data, preprocessing_options=None, batch_size=1000, use_ta
             ('classifier', svm)
         ])
         return pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm
-    
-    # Jika model belum ada, lakukan training dan simpan
-    pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm = train_model(data, preprocessing_options, batch_size)
-    save_model_and_vectorizer(pipeline, tfidf)
-    return pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm
+    else:
+        # Model tidak ditemukan - seharusnya sudah disiapkan sebelumnya
+        st.error("❌ Model tidak ditemukan! Silakan restart aplikasi untuk pelatihan ulang model.")
+        st.stop()
 
 def predict_sentiment(text, pipeline, preprocessing_options=None):
     if preprocessing_options is None:
@@ -644,3 +632,205 @@ def display_model_metrics(accuracy, precision, recall, f1, confusion_mat):
                 ax.text(j, i, confusion_mat[i, j], ha="center", va="center", 
                     color="white" if confusion_mat[i, j] > confusion_mat.max()/2 else "black")
         st.pyplot(fig)
+
+def check_and_prepare_models_with_progress():
+    """
+    Check and prepare models with proper progress feedback for better UX.
+    This function should be called after user login to avoid confusion.
+    """
+    import streamlit as st
+    
+    # Check if models exist
+    svm_model, tfidf_vectorizer = load_saved_model()
+    svm_model_tanpa_smote, tfidf_vectorizer_tanpa_smote = load_saved_model_tanpa_smote()
+    
+    models_exist = (svm_model is not None and tfidf_vectorizer is not None and 
+                   svm_model_tanpa_smote is not None and tfidf_vectorizer_tanpa_smote is not None)
+    
+    if not models_exist:
+        # Show model not found notification
+        st.warning("⚠️ **Model tidak ditemukan, memulai pelatihan model...**")
+        
+        # Create progress container
+        progress_container = st.container()
+        with progress_container:
+            st.markdown("🔄 **Proses Pelatihan Model:**")
+            
+            # Load data for training
+            data = load_sample_data()
+            if data.empty:
+                st.error("❌ Data training tidak ditemukan!")
+                return False
+                
+            preprocessing_options = {
+                'lowercase': True,
+                'clean_text': True,
+                'normalize_slang': True,
+                'remove_repeated': True,
+                'remove_punctuation': True,
+                'remove_numbers': True,
+                'tokenize': True,
+                'remove_stopwords': True,
+                'stemming': True,
+                'rejoin': True
+            }
+            
+            # Train both models with progress feedback
+            with st.spinner("🤖 Melatih model sentiment analysis..."):
+                try:
+                    # Train regular model
+                    st.write("📈 **Tahap 1:** Melatih model utama...")
+                    pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm = train_model_silent(data, preprocessing_options)
+                    save_model_and_vectorizer(pipeline, tfidf)
+                    
+                    # Train tanpa SMOTE model  
+                    st.write("📊 **Tahap 2:** Melatih model tanpa SMOTE...")
+                    pipeline_tanpa_smote, _, _, _, _, _, _, _, tfidf_tanpa_smote, svm_tanpa_smote = train_model_silent(data, preprocessing_options)
+                    save_model_and_vectorizer_tanpa_smote(pipeline_tanpa_smote, tfidf_tanpa_smote)
+                    
+                    # Clear progress container
+                    progress_container.empty()
+                    
+                    # Success notification
+                    st.toast(f"✅ Model berhasil dilatih! Akurasi: {accuracy:.2%}", icon="✅")
+                    st.success(f"""
+                    🎉 **Model sentiment analysis berhasil dilatih!**
+                    
+                    📊 **Performa Model:**
+                    - **Akurasi:** {accuracy:.2%}
+                    - **Precision:** {precision:.2%}
+                    - **Recall:** {recall:.2%}
+                    - **F1-Score:** {f1:.2%}
+                    
+                    ✅ Model siap digunakan untuk analisis sentimen!
+                    """)
+                    
+                    return True
+                    
+                except Exception as e:
+                    progress_container.empty()
+                    st.error(f"❌ Gagal melatih model: {str(e)}")
+                    st.toast("❌ Pelatihan model gagal!", icon="❌")
+                    return False
+    else:
+        # Models exist, check compatibility
+        is_compatible, compatibility_msg = check_model_compatibility()
+        if not is_compatible:
+            st.warning(f"⚠️ **Masalah kompatibilitas model:** {compatibility_msg}")
+            
+            progress_container = st.container()
+            with progress_container:
+                st.markdown("🔄 **Memperbarui model ke versi yang kompatibel...**")
+                
+                data = load_sample_data()
+                preprocessing_options = {
+                    'lowercase': True, 'clean_text': True, 'normalize_slang': True,
+                    'remove_repeated': True, 'remove_punctuation': True, 'remove_numbers': True,
+                    'tokenize': True, 'remove_stopwords': True, 'stemming': True, 'rejoin': True
+                }
+                
+                with st.spinner("🔄 Memperbarui model..."):
+                    try:
+                        st.write("📈 **Tahap 1:** Memperbarui model utama...")
+                        pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm = train_model_silent(data, preprocessing_options)
+                        save_model_and_vectorizer(pipeline, tfidf)
+                        
+                        st.write("📊 **Tahap 2:** Memperbarui model tanpa SMOTE...")
+                        pipeline_tanpa_smote, _, _, _, _, _, _, _, tfidf_tanpa_smote, svm_tanpa_smote = train_model_silent(data, preprocessing_options)
+                        save_model_and_vectorizer_tanpa_smote(pipeline_tanpa_smote, tfidf_tanpa_smote)
+                        
+                        progress_container.empty()
+                        st.toast("✅ Model berhasil diperbarui!", icon="✅")
+                        st.success("🎉 **Model berhasil diperbarui dan siap digunakan!**")
+                        return True
+                        
+                    except Exception as e:
+                        progress_container.empty()
+                        st.error(f"❌ Gagal memperbarui model: {str(e)}")
+                        st.toast("❌ Pembaruan model gagal!", icon="❌") 
+                        return False
+        else:
+            # Models are ready
+            st.toast("✅ Model sentiment analysis siap digunakan!", icon="✅")
+            st.success("✅ **Model sentiment analysis sudah siap!**\n\nSemua tools analisis dapat digunakan dengan optimal.")
+            return True
+
+def train_model_silent(data, preprocessing_options=None, batch_size=1000):
+    """
+    Train model without showing progress bar (for use in check_and_prepare_models_with_progress).
+    """
+    if preprocessing_options is None:
+        preprocessing_options = {
+            'lowercase': True, 'remove_punctuation': True, 'remove_numbers': True,
+            'clean_text': True, 'remove_stopwords': True, 'stemming': True, 'rejoin': True
+        }
+    
+    try:
+        processed_texts = []
+        for i in range(0, len(data), batch_size):
+            batch_end = min(i + batch_size, len(data))
+            batch = data.iloc[i:batch_end]
+            batch_processed = []
+            for text in batch['review_text']:
+                try:
+                    processed = preprocess_text(text, preprocessing_options)
+                    batch_processed.append(processed)
+                except Exception as e:
+                    batch_processed.append(text)
+            processed_texts.extend(batch_processed)
+            
+        tfidf = TfidfVectorizer(
+            max_features=1000, min_df=2, max_df=0.85, ngram_range=(1, 2),
+            lowercase=False, strip_accents='unicode', norm='l2', sublinear_tf=True,
+        )
+        
+        X = tfidf.fit_transform(processed_texts)
+        y = data['sentiment']
+        
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+        
+        svm = SVC(C=10, kernel='linear', gamma='scale', probability=True, class_weight='balanced')
+        svm.fit(X_train, y_train)
+        
+        y_pred = svm.predict(X_test)
+        accuracy = accuracy_score(y_test, y_pred)
+        precision = precision_score(y_test, y_pred, pos_label="POSITIF")
+        recall = recall_score(y_test, y_pred, pos_label="POSITIF")
+        f1 = f1_score(y_test, y_pred, pos_label="POSITIF")
+        cm = confusion_matrix(y_test, y_pred)
+        
+        pipeline = Pipeline([('vectorizer', tfidf), ('classifier', svm)])
+        return pipeline, accuracy, precision, recall, f1, cm, X_test, y_test, tfidf, svm
+        
+    except Exception as e:
+        st.error(f"Error in model training: {str(e)}")
+        raise e
+
+def save_model_and_vectorizer_tanpa_smote(pipeline, tfidf_vectorizer, model_dir="models"):
+    """
+    Save the trained SVM model and TF-IDF vectorizer (tanpa SMOTE version).
+    """
+    os.makedirs(model_dir, exist_ok=True)
+    
+    svm_model = pipeline.named_steps['classifier']
+    model_path = os.path.join(model_dir, "svm_model_tanpa_smote.pkl")
+    vectorizer_path = os.path.join(model_dir, "tfidf_vectorizer_tanpa_smote.pkl")
+    
+    joblib.dump(svm_model, model_path)
+    joblib.dump(tfidf_vectorizer, vectorizer_path)
+    
+    # Save metadata
+    metadata = {
+        'model_type': 'SVM',
+        'vectorizer_type': 'TF-IDF',
+        'training_date': datetime.now().isoformat(),
+        'sklearn_version': joblib.__version__,
+        'version': 'tanpa_smote'
+    }
+    
+    metadata_path = os.path.join(model_dir, "model_metadata_tanpa_smote.txt")
+    with open(metadata_path, 'w') as f:
+        for key, value in metadata.items():
+            f.write(f"{key}: {value}\n")

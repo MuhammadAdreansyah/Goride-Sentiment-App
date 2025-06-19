@@ -105,19 +105,12 @@ def safe_create_wordcloud(text: str, max_words: int = 100, max_length: int = 100
 def render_dashboard():
     # Sinkronisasi status login dari cookie ke session_state (penting untuk refresh)
     auth.sync_login_state()
-    # Tampilkan toast jika login baru saja berhasil (untuk fallback jika main.py tidak sempat menampilkan)
-    if st.session_state.get('login_success', False):
-        st.toast(f"User {st.session_state.get('user_email', '')} login successfully!", icon="✅")
-        st.session_state['login_success'] = False
     
     # Load data dan model (cache)
     data = load_sample_data()
-    if 'data_loaded_toast_shown' not in st.session_state:
-        if not data.empty:
-            st.toast(f"Data berhasil dimuat: {len(data)} ulasan", icon="✅")
-        else:
-            st.toast("Data gagal dimuat atau kosong!", icon="⚠️")
-        st.session_state['data_loaded_toast_shown'] = True
+    if data.empty:
+        st.error("❌ Data tidak tersedia untuk analisis!")
+        st.stop()
     
     preprocessing_options = {
         'lowercase': True,
@@ -132,6 +125,7 @@ def render_dashboard():
         'rejoin': True
     }
     
+    # Model sudah disiapkan sebelumnya, langsung load
     pipeline, accuracy, precision, recall, f1, confusion_mat, X_test, y_test, tfidf_vectorizer, svm_model = get_or_train_model(data, preprocessing_options)
     
     # Header section with better spacing

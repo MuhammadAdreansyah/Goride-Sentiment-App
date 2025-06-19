@@ -27,6 +27,10 @@ def render_data_analysis():
     """
     # Load data dan model (cache)
     data = load_sample_data()
+    if data.empty:
+        st.error("❌ Data tidak tersedia untuk analisis!")
+        st.stop()
+        
     preprocessing_options = {
         'lowercase': True,
         'clean_text': True,
@@ -39,6 +43,8 @@ def render_data_analysis():
         'stemming': True,
         'rejoin': True
     }
+    
+    # Model sudah disiapkan sebelumnya, langsung load
     pipeline, accuracy, precision, recall, f1, confusion_mat, X_test, y_test, tfidf_vectorizer, svm_model = get_or_train_model(data, preprocessing_options)
 
     st.title("📑 Analisis Teks")
